@@ -40,6 +40,8 @@ class ApiService {
     required String firstName,
     required String email,
     required String password,
+    required String age,
+    required String country,
     int role = 1,
   }) async {
     try {
@@ -47,9 +49,34 @@ class ApiService {
         'first_name': firstName,
         'email': email,
         'password': password,
+        'age': age,
+        'country': country,
         'role': role,
       });
-      return UserModel.fromJson(res.data as Map<String, dynamic>);
+
+      final body = res.data as Map<String, dynamic>;
+      final message = (body['message'] ?? '').toString().toLowerCase();
+
+      // Server signals duplicate email
+      if (message.contains('already') || message.contains('exist')) {
+        throw 'emailAlreadyExists';
+      }
+
+      // Server returned full user object (id present) — parse directly
+      if (body['id'] != null) {
+        return UserModel.fromJson(body);
+      }
+
+      // Server returned only {"message": "User account created."} —
+      // build a minimal UserModel from what we know so the app can proceed.
+      return UserModel(
+        id: 0,
+        firstName: firstName,
+        lastName: '',
+        email: email,
+        role: role.toString(),
+        age: age,
+      );
     } on DioException catch (e) {
       throw _parseError(e);
     }
@@ -72,7 +99,6 @@ class ApiService {
 
   // ── Posts ─────────────────────────────────────────────────────────────────
 
-  /// Fetches all published posts from GET /posts
   Future<List<PostModel>> fetchPosts() async {
     try {
       final res = await _authDio.get('/posts');
@@ -89,8 +115,6 @@ class ApiService {
 
   // ── PDF ──────────────────────────────────────────────────────────────────
 
-  /// Downloads raw PDF bytes from a full URL (the `image` field value
-  /// combined with the storage base URL).
   Future<Uint8List> fetchPdfBytes(String pdfUrl) async {
     try {
       final res = await Dio().get(

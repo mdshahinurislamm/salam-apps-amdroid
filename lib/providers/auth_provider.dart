@@ -5,9 +5,6 @@ import 'package:flutter/services.dart';
 import '../models/user_model.dart';
 import '../services/api_service.dart';
 
-/// Auth state — persists user to a plain JSON file in the app's cache dir.
-/// No third-party storage plugin needed; uses a MethodChannel to get the
-/// cache directory path from Android directly.
 class AuthProvider extends ChangeNotifier {
   static const _platform =
       MethodChannel('com.example.flutter_application_1/paths');
@@ -23,8 +20,6 @@ class AuthProvider extends ChangeNotifier {
   String? get error => _error;
   bool get isLoggedIn => _user != null;
 
-  // ── Storage helpers ───────────────────────────────────────────────────────
-
   Future<File> _sessionFile() async {
     final dir = await _platform.invokeMethod<String>('getCacheDir');
     return File('$dir/session.json');
@@ -38,9 +33,7 @@ class AuthProvider extends ChangeNotifier {
         _user = UserModel.fromJson(jsonDecode(raw) as Map<String, dynamic>);
         notifyListeners();
       }
-    } catch (_) {
-      // corrupt / missing file — stay logged out
-    }
+    } catch (_) {}
   }
 
   Future<void> _persistUser() async {
@@ -54,6 +47,7 @@ class AuthProvider extends ChangeNotifier {
           'last_name': _user!.lastName,
           'email': _user!.email,
           'role': _user!.role,
+          'age': _user!.age,
         }),
       );
     } catch (_) {}
@@ -66,12 +60,12 @@ class AuthProvider extends ChangeNotifier {
     } catch (_) {}
   }
 
-  // ── Auth actions ──────────────────────────────────────────────────────────
-
   Future<bool> register({
     required String firstName,
     required String email,
     required String password,
+    required String age,
+    required String country,
   }) async {
     _loading = true;
     _error = null;
@@ -81,6 +75,8 @@ class AuthProvider extends ChangeNotifier {
         firstName: firstName,
         email: email,
         password: password,
+        age: age,
+        country: country,
       );
       await _persistUser();
       return true;
