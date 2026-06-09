@@ -4,6 +4,7 @@ class UserModel {
   final String lastName;
   final String email;
   final String role;
+  final String age; // e.g. "group_a", "group_b"
 
   UserModel({
     required this.id,
@@ -11,6 +12,7 @@ class UserModel {
     required this.lastName,
     required this.email,
     required this.role,
+    required this.age,
   });
 
   factory UserModel.fromJson(Map<String, dynamic> json) {
@@ -20,6 +22,7 @@ class UserModel {
       lastName: json['last_name'] ?? '',
       email: json['email'] ?? '',
       role: json['role']?.toString() ?? '0',
+      age: json['age']?.toString() ?? '',
     );
   }
 }

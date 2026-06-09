@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_pdfview/flutter_pdfview.dart';
 import 'package:provider/provider.dart';
+import '../models/post_model.dart';
 import '../providers/auth_provider.dart';
 import '../providers/language_provider.dart';
 import '../services/api_service.dart';
@@ -22,70 +23,39 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
   final ApiService _api = ApiService();
 
-  String? _pdfPath;
-  bool _loading = false;
-  String? _error;
-  String? _loadedForLang;
-
-  int _currentPage = 0;
-  int _totalPages = 0;
+  // Posts state
+  List<PostModel> _posts = [];
+  bool _postsLoading = false;
+  String? _postsError;
 
   @override
   void initState() {
     super.initState();
-    WidgetsBinding.instance.addPostFrameCallback((_) => _loadPdf());
+    WidgetsBinding.instance.addPostFrameCallback((_) => _loadPosts());
   }
 
-  /// Returns the app's cache directory without using path_provider.
   Future<String> _getCacheDir() async {
-    final String path =
-        await _platform.invokeMethod('getCacheDir');
-    return path;
+    return await _platform.invokeMethod('getCacheDir');
   }
 
-  Future<void> _loadPdf() async {
+  Future<void> _loadPosts() async {
     if (!mounted) return;
-    final lang = context.read<LanguageProvider>().pdfLang;
-
-    if (_loadedForLang == lang && _pdfPath != null) return;
-
     setState(() {
-      _loading = true;
-      _error = null;
-      _pdfPath = null;
-      _currentPage = 0;
-      _totalPages = 0;
+      _postsLoading = true;
+      _postsError = null;
     });
-
     try {
-      // 1. Download bytes
-      final Uint8List bytes = await _api.fetchPdf(lang);
-
-      // 2. Validate it's a real PDF (%PDF magic bytes)
-      if (bytes.length < 4 ||
-          bytes[0] != 0x25 || // %
-          bytes[1] != 0x50 || // P
-          bytes[2] != 0x44 || // D
-          bytes[3] != 0x46) { // F
-        throw 'invalidPdf';
-      }
-
-      // 3. Write to cache (no path_provider needed)
-      final cacheDir = await _getCacheDir();
-      final file = File('$cacheDir/doc_$lang.pdf');
-      await file.writeAsBytes(bytes, flush: true);
-
+      final posts = await _api.fetchPosts();
       if (!mounted) return;
       setState(() {
-        _pdfPath = file.path;
-        _loadedForLang = lang;
-        _loading = false;
+        _posts = posts;
+        _postsLoading = false;
       });
     } catch (e) {
       if (!mounted) return;
       setState(() {
-        _error = e.toString();
-        _loading = false;
+        _postsError = e.toString();
+        _postsLoading = false;
       });
     }
   }
@@ -106,7 +76,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
           ElevatedButton(
             onPressed: () => Navigator.pop(ctx, true),
             style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
-            child: Text(isAr ? 'خروج' : 'Logout'),
+            child: Text(isAr ? 'خروج' : 'Logout',
+                style: const TextStyle(color: Colors.white)),
           ),
         ],
       ),
@@ -121,33 +92,18 @@ class _DashboardScreenState extends State<DashboardScreen> {
     );
   }
 
-  String _friendlyError(String? err, bool isAr) {
-    if (err == null) return isAr ? 'خطأ غير معروف' : 'Unknown error';
-    if (err.contains('serverError:500')) {
-      return isAr
-          ? 'خطأ في الخادم (500). ملف اللغة الإنجليزية غير موجود على الخادم.'
-          : 'Server error (500). The English PDF may be missing on the server.';
-    }
-    if (err.contains('serverError:404')) {
-      return isAr ? 'الملف غير موجود على الخادم.' : 'PDF not found on server.';
-    }
-    if (err == 'invalidPdf') {
-      return isAr
-          ? 'الملف المستلم ليس PDF صالح.'
-          : 'Received file is not a valid PDF.';
-    }
-    if (err == 'emptyResponse') {
-      return isAr ? 'الخادم أرسل ملفاً فارغاً.' : 'Server returned an empty file.';
-    }
-    if (err == 'timeoutError') {
-      return isAr ? 'انتهت مهلة الاتصال. حاول مرة أخرى.' : 'Connection timed out. Try again.';
-    }
-    if (err.contains('network') || err.contains('Network') || err.contains('socket')) {
-      return isAr
-          ? 'تعذّر الاتصال بالإنترنت. تحقق من اتصالك.'
-          : 'No internet connection. Check your network.';
-    }
-    return isAr ? 'فشل تحميل الملف' : 'Failed to load PDF';
+  /// Opens the PDF viewer screen for a given post.
+  Future<void> _openPdf(PostModel post) async {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => _PdfViewerScreen(
+          post: post,
+          getCacheDir: _getCacheDir,
+          api: _api,
+        ),
+      ),
+    );
   }
 
   @override
@@ -155,10 +111,17 @@ class _DashboardScreenState extends State<DashboardScreen> {
     final lang = context.watch<LanguageProvider>();
     final auth = context.watch<AuthProvider>();
     final isAr = lang.isArabic;
+    final userAge = auth.user?.age ?? '';
 
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted && _loadedForLang != lang.pdfLang) _loadPdf();
-    });
+    // Filter posts: type matches user.age, published only,
+    // AND language matches the current app language toggle.
+    final activeLang = isAr ? 'arabic' : 'english';
+    final visiblePosts = _posts
+        .where((p) =>
+            p.isPublished &&
+            p.type == userAge &&
+            p.languages.toLowerCase() == activeLang)
+        .toList();
 
     return Directionality(
       textDirection: isAr ? TextDirection.rtl : TextDirection.ltr,
@@ -186,15 +149,20 @@ class _DashboardScreenState extends State<DashboardScreen> {
         ),
         body: Column(
           children: [
-            _buildUserBanner(auth, isAr, lang.pdfLang),
-            Expanded(child: _buildPdfArea(isAr)),
+            _buildUserBanner(auth, isAr, userAge),
+            Expanded(
+              child: _buildBody(
+                isAr: isAr,
+                posts: visiblePosts,
+              ),
+            ),
           ],
         ),
       ),
     );
   }
 
-  Widget _buildUserBanner(AuthProvider auth, bool isAr, String lang) {
+  Widget _buildUserBanner(AuthProvider auth, bool isAr, String userAge) {
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
@@ -228,43 +196,325 @@ class _DashboardScreenState extends State<DashboardScreen> {
                   isAr
                       ? 'مرحباً، ${auth.user?.firstName ?? ''}'
                       : 'Welcome, ${auth.user?.firstName ?? ''}',
-                  style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+                  style: const TextStyle(
+                      fontWeight: FontWeight.bold, fontSize: 16),
                 ),
                 Text(
                   auth.user?.email ?? '',
-                  style: TextStyle(color: Colors.grey.shade600, fontSize: 13),
+                  style:
+                      TextStyle(color: Colors.grey.shade600, fontSize: 13),
                 ),
               ],
             ),
           ),
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-            decoration: BoxDecoration(
-              color: const Color(0xFF1565C0),
-              borderRadius: BorderRadius.circular(20),
-            ),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                const Icon(Icons.picture_as_pdf, color: Colors.white, size: 14),
-                const SizedBox(width: 4),
-                Text(
-                  lang.toUpperCase(),
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontSize: 11,
-                    fontWeight: FontWeight.bold,
-                  ),
+          if (userAge.isNotEmpty)
+            Container(
+              padding:
+                  const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+              decoration: BoxDecoration(
+                color: const Color(0xFF1565C0),
+                borderRadius: BorderRadius.circular(20),
+              ),
+              child: Text(
+                userAge.toUpperCase().replaceAll('_', ' '),
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 11,
+                  fontWeight: FontWeight.bold,
                 ),
-              ],
+              ),
             ),
-          ),
         ],
       ),
     );
   }
 
-  Widget _buildPdfArea(bool isAr) {
+  Widget _buildBody({
+    required bool isAr,
+    required List<PostModel> posts,
+  }) {
+    if (_postsLoading) {
+      return Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const CircularProgressIndicator(color: Color(0xFF1565C0)),
+            const SizedBox(height: 16),
+            Text(
+              isAr ? 'جارٍ التحميل...' : 'Loading...',
+              style: TextStyle(color: Colors.grey.shade600),
+            ),
+          ],
+        ),
+      );
+    }
+
+    if (_postsError != null) {
+      return Center(
+        child: Padding(
+          padding: const EdgeInsets.all(32),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(Icons.error_outline_rounded,
+                  size: 64, color: Colors.red.shade400),
+              const SizedBox(height: 16),
+              Text(
+                isAr ? 'فشل تحميل المحتوى' : 'Failed to Load Content',
+                style: const TextStyle(
+                    fontSize: 18, fontWeight: FontWeight.bold),
+              ),
+              const SizedBox(height: 24),
+              ElevatedButton.icon(
+                onPressed: _loadPosts,
+                icon: const Icon(Icons.refresh),
+                label: Text(isAr ? 'إعادة المحاولة' : 'Retry'),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
+    if (posts.isEmpty) {
+      return Center(
+        child: Padding(
+          padding: const EdgeInsets.all(32),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(Icons.folder_open_outlined,
+                  size: 64, color: Colors.grey.shade400),
+              const SizedBox(height: 16),
+              Text(
+                isAr ? 'لا توجد ملفات متاحة' : 'No files available',
+                style: TextStyle(
+                    fontSize: 16, color: Colors.grey.shade600),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
+    final color =
+        isAr ? const Color(0xFF2E7D32) : const Color(0xFF1565C0);
+    final sectionLabel =
+        isAr ? 'الكتب العربية' : 'English Books';
+
+    return ListView(
+      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
+      children: [
+        _sectionHeader(
+          icon: Icons.menu_book_rounded,
+          label: sectionLabel,
+          color: color,
+        ),
+        const SizedBox(height: 12),
+        ...posts.map((post) => _pdfButton(
+              post: post,
+              isAr: isAr,
+              color: color,
+              langLabel: isAr ? 'عربي' : 'English',
+              flagEmoji: isAr ? '🇸🇦' : '🇬🇧',
+            )),
+      ],
+    );
+  }
+
+  Widget _sectionHeader({
+    required IconData icon,
+    required String label,
+    required Color color,
+  }) {
+    return Row(
+      children: [
+        Icon(icon, color: color, size: 20),
+        const SizedBox(width: 8),
+        Text(
+          label,
+          style: TextStyle(
+            fontSize: 16,
+            fontWeight: FontWeight.bold,
+            color: color,
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _pdfButton({
+    required PostModel post,
+    required bool isAr,
+    required Color color,
+    required String langLabel,
+    required String flagEmoji,
+  }) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: Material(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(14),
+        elevation: 1,
+        shadowColor: color.withOpacity(0.15),
+        child: InkWell(
+          borderRadius: BorderRadius.circular(14),
+          onTap: () => _openPdf(post),
+          child: Padding(
+            padding: const EdgeInsets.all(16),
+            child: Row(
+              children: [
+                Container(
+                  width: 48,
+                  height: 48,
+                  decoration: BoxDecoration(
+                    color: color.withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Icon(Icons.picture_as_pdf_rounded,
+                      color: color, size: 28),
+                ),
+                const SizedBox(width: 14),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        post.title,
+                        style: const TextStyle(
+                          fontWeight: FontWeight.bold,
+                          fontSize: 15,
+                        ),
+                      ),
+                      const SizedBox(height: 3),
+                      Text(
+                        '$flagEmoji  $langLabel',
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: Colors.grey.shade500,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                Icon(Icons.chevron_right_rounded,
+                    color: Colors.grey.shade400),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+// ─── PDF Viewer Screen ────────────────────────────────────────────────────────
+
+class _PdfViewerScreen extends StatefulWidget {
+  final PostModel post;
+  final Future<String> Function() getCacheDir;
+  final ApiService api;
+
+  const _PdfViewerScreen({
+    required this.post,
+    required this.getCacheDir,
+    required this.api,
+  });
+
+  @override
+  State<_PdfViewerScreen> createState() => _PdfViewerScreenState();
+}
+
+class _PdfViewerScreenState extends State<_PdfViewerScreen> {
+  String? _pdfPath;
+  bool _loading = true;
+  String? _error;
+  int _currentPage = 0;
+  int _totalPages = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadPdf();
+  }
+
+  Future<void> _loadPdf() async {
+    setState(() {
+      _loading = true;
+      _error = null;
+    });
+    try {
+      final Uint8List bytes =
+          await widget.api.fetchPdfBytes(widget.post.pdfUrl);
+
+      // Validate PDF magic bytes
+      if (bytes.length < 4 ||
+          bytes[0] != 0x25 ||
+          bytes[1] != 0x50 ||
+          bytes[2] != 0x44 ||
+          bytes[3] != 0x46) {
+        throw 'invalidPdf';
+      }
+
+      final cacheDir = await widget.getCacheDir();
+      final file =
+          File('$cacheDir/post_${widget.post.id}.pdf');
+      await file.writeAsBytes(bytes, flush: true);
+
+      if (!mounted) return;
+      setState(() {
+        _pdfPath = file.path;
+        _loading = false;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _error = e.toString();
+        _loading = false;
+      });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final isAr =
+        context.watch<LanguageProvider>().isArabic;
+    final isArabicDoc =
+        widget.post.languages.toLowerCase() == 'arabic';
+
+    return Directionality(
+      textDirection: isAr ? TextDirection.rtl : TextDirection.ltr,
+      child: Scaffold(
+        backgroundColor: Colors.grey.shade100,
+        appBar: AppBar(
+          backgroundColor: const Color(0xFF1565C0),
+          foregroundColor: Colors.white,
+          elevation: 0,
+          title: Text(
+            widget.post.title,
+            style: const TextStyle(fontWeight: FontWeight.bold),
+          ),
+          actions: [
+            if (_totalPages > 0)
+              Padding(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                child: Text(
+                  isAr
+                      ? '${_currentPage + 1} / $_totalPages'
+                      : '${_currentPage + 1} / $_totalPages',
+                  style: const TextStyle(
+                      color: Colors.white, fontWeight: FontWeight.w500),
+                ),
+              ),
+          ],
+        ),
+        body: _buildBody(isAr, isArabicDoc),
+      ),
+    );
+  }
+
+  Widget _buildBody(bool isAr, bool isArabicDoc) {
     if (_loading) {
       return Center(
         child: Column(
@@ -288,17 +538,13 @@ class _DashboardScreenState extends State<DashboardScreen> {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Icon(Icons.error_outline_rounded, size: 64, color: Colors.red.shade400),
+              Icon(Icons.error_outline_rounded,
+                  size: 64, color: Colors.red.shade400),
               const SizedBox(height: 16),
               Text(
                 isAr ? 'فشل تحميل الملف' : 'Failed to Load PDF',
-                style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-              ),
-              const SizedBox(height: 8),
-              Text(
-                _friendlyError(_error, isAr),
-                textAlign: TextAlign.center,
-                style: TextStyle(color: Colors.grey.shade600, height: 1.5),
+                style: const TextStyle(
+                    fontSize: 18, fontWeight: FontWeight.bold),
               ),
               const SizedBox(height: 24),
               ElevatedButton.icon(
@@ -314,50 +560,29 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
     if (_pdfPath == null) return const SizedBox.shrink();
 
-    return Column(
-      children: [
-        if (_totalPages > 0)
-          Container(
-            padding: const EdgeInsets.symmetric(vertical: 8),
-            color: Colors.white,
-            child: Center(
-              child: Text(
-                isAr
-                    ? 'الصفحة ${_currentPage + 1} من $_totalPages'
-                    : 'Page ${_currentPage + 1} of $_totalPages',
-                style: TextStyle(
-                  color: Colors.grey.shade600,
-                  fontSize: 13,
-                  fontWeight: FontWeight.w500,
-                ),
-              ),
-            ),
-          ),
-        Expanded(
-          child: PDFView(
-            filePath: _pdfPath!,
-            enableSwipe: true,
-            swipeHorizontal: false,
-            autoSpacing: true,
-            pageFling: true,
-            fitPolicy: FitPolicy.BOTH,
-            onRender: (pages) {
-              if (mounted) setState(() => _totalPages = pages ?? 0);
-            },
-            onPageChanged: (page, total) {
-              if (mounted) {
-                setState(() {
-                  _currentPage = page ?? 0;
-                  _totalPages = total ?? 0;
-                });
-              }
-            },
-            onError: (error) {
-              if (mounted) setState(() => _error = 'pdfRenderError: $error');
-            },
-          ),
-        ),
-      ],
+    return PDFView(
+      filePath: _pdfPath!,
+      enableSwipe: true,
+      swipeHorizontal: false,
+      autoSpacing: true,
+      pageFling: true,
+      fitPolicy: FitPolicy.BOTH,
+      // Arabic PDFs are typically RTL — render from last page first
+      defaultPage: isArabicDoc ? (_totalPages > 0 ? _totalPages - 1 : 0) : 0,
+      onRender: (pages) {
+        if (mounted) setState(() => _totalPages = pages ?? 0);
+      },
+      onPageChanged: (page, total) {
+        if (mounted) {
+          setState(() {
+            _currentPage = page ?? 0;
+            _totalPages = total ?? 0;
+          });
+        }
+      },
+      onError: (error) {
+        if (mounted) setState(() => _error = 'pdfRenderError: $error');
+      },
     );
   }
 }
@@ -378,8 +603,14 @@ class _LangToggle extends StatelessWidget {
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          _Chip(label: 'EN', selected: !provider.isArabic, onTap: provider.setEnglish),
-          _Chip(label: 'AR', selected: provider.isArabic, onTap: provider.setArabic),
+          _Chip(
+              label: 'EN',
+              selected: !provider.isArabic,
+              onTap: provider.setEnglish),
+          _Chip(
+              label: 'AR',
+              selected: provider.isArabic,
+              onTap: provider.setArabic),
         ],
       ),
     );
@@ -390,14 +621,16 @@ class _Chip extends StatelessWidget {
   final String label;
   final bool selected;
   final VoidCallback onTap;
-  const _Chip({required this.label, required this.selected, required this.onTap});
+  const _Chip(
+      {required this.label, required this.selected, required this.onTap});
 
   @override
   Widget build(BuildContext context) {
     return GestureDetector(
       onTap: onTap,
       child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+        padding:
+            const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
         decoration: BoxDecoration(
           color: selected ? Colors.white : Colors.transparent,
           borderRadius: BorderRadius.circular(7),
@@ -406,7 +639,9 @@ class _Chip extends StatelessWidget {
           label,
           style: TextStyle(
             fontSize: 12,
-            color: selected ? const Color(0xFF1565C0) : Colors.white,
+            color: selected
+                ? const Color(0xFF1565C0)
+                : Colors.white,
             fontWeight: FontWeight.bold,
           ),
         ),

@@ -1,14 +1,13 @@
 import 'dart:typed_data';
 import 'package:dio/dio.dart';
 import '../models/user_model.dart';
+import '../models/post_model.dart';
 
 class ApiService {
-  // ── Your live server ──────────────────────────────────────────────────────
   static const String _baseUrl = 'https://larapress.org/salam/api';
-  // ─────────────────────────────────────────────────────────────────────────
 
-  late final Dio _authDio;   // for JSON auth endpoints
-  late final Dio _fileDio;   // for binary/file endpoints (no Content-Type override)
+  late final Dio _authDio;
+  late final Dio _fileDio;
 
   ApiService() {
     _authDio = Dio(
@@ -28,7 +27,6 @@ class ApiService {
         baseUrl: _baseUrl,
         connectTimeout: const Duration(seconds: 20),
         receiveTimeout: const Duration(seconds: 60),
-        // No Content-Type header — let Dio set it naturally for file downloads
         headers: {
           'Accept': 'application/pdf,*/*',
         },
@@ -72,33 +70,45 @@ class ApiService {
     }
   }
 
+  // ── Posts ─────────────────────────────────────────────────────────────────
+
+  /// Fetches all published posts from GET /posts
+  Future<List<PostModel>> fetchPosts() async {
+    try {
+      final res = await _authDio.get('/posts');
+      final data = res.data;
+      final List<dynamic> list =
+          data is Map ? (data['data'] as List<dynamic>) : data as List<dynamic>;
+      return list
+          .map((e) => PostModel.fromJson(e as Map<String, dynamic>))
+          .toList();
+    } on DioException catch (e) {
+      throw _parseError(e);
+    }
+  }
+
   // ── PDF ──────────────────────────────────────────────────────────────────
 
-  /// Downloads the PDF bytes for the given language ('en' or 'ar').
-  /// Calls: GET /api/pdf?lang=en  or  GET /api/pdf?lang=ar
-  Future<Uint8List> fetchPdf(String languageCode) async {
+  /// Downloads raw PDF bytes from a full URL (the `image` field value
+  /// combined with the storage base URL).
+  Future<Uint8List> fetchPdfBytes(String pdfUrl) async {
     try {
-      final res = await _fileDio.get(
-        '/pdf',
-        queryParameters: {'lang': languageCode},
+      final res = await Dio().get(
+        pdfUrl,
         options: Options(
           responseType: ResponseType.bytes,
-          // Follow redirects (some servers redirect to the actual file)
           followRedirects: true,
           maxRedirects: 5,
           validateStatus: (status) => status != null && status < 500,
+          headers: {'Accept': 'application/pdf,*/*'},
         ),
       );
 
       if (res.statusCode != 200) {
         throw 'serverError:${res.statusCode}';
       }
-
       final bytes = res.data as List<int>;
-      if (bytes.isEmpty) {
-        throw 'emptyResponse';
-      }
-
+      if (bytes.isEmpty) throw 'emptyResponse';
       return Uint8List.fromList(bytes);
     } on DioException catch (e) {
       throw _parseError(e);
