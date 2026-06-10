@@ -160,6 +160,65 @@ class ApiService {
     }
   }
 
+
+  // ── Forgot Password ───────────────────────────────────────────────────────
+
+  Future<void> forgotPassword({required String email}) async {
+    try {
+      final res = await _authDio.post('/forgotpassword', data: {'email': email});
+      final body = res.data as Map<String, dynamic>;
+      if (body['status'] == false) {
+        final msg = (body['message'] ?? '').toString().toLowerCase();
+        if (msg.contains('not found')) throw 'userNotFound';
+        throw body['message']?.toString() ?? 'requestFailed';
+      }
+    } on DioException catch (e) {
+      throw _parseError(e);
+    }
+  }
+
+  Future<void> verifyResetOtp({
+    required String email,
+    required String otp,
+  }) async {
+    try {
+      final res = await _authDio.post('/verifyresetotp', data: {
+        'email': email,
+        'otp': otp,
+      });
+      final body = res.data as Map<String, dynamic>;
+      if (body['status'] == false) {
+        final msg = (body['message'] ?? '').toString().toLowerCase();
+        if (msg.contains('expired')) throw 'otpExpired';
+        throw 'invalidOtp';
+      }
+    } on DioException catch (e) {
+      throw _parseError(e);
+    }
+  }
+
+  Future<void> resetPassword({
+    required String email,
+    required String otp,
+    required String password,
+    required String passwordConfirmation,
+  }) async {
+    try {
+      final res = await _authDio.post('/resetpassword', data: {
+        'email': email,
+        'otp': otp,
+        'password': password,
+        'password_confirmation': passwordConfirmation,
+      });
+      final body = res.data as Map<String, dynamic>;
+      if (body['status'] == false) {
+        throw body['message']?.toString() ?? 'resetFailed';
+      }
+    } on DioException catch (e) {
+      throw _parseError(e);
+    }
+  }
+
   // ── Error helper ─────────────────────────────────────────────────────────
 
   String _parseError(DioException e) {

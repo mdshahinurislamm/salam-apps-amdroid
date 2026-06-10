@@ -5,6 +5,7 @@ import '../providers/language_provider.dart';
 import 'register_screen.dart';
 import 'dashboard_screen.dart';
 import 'otp_screen.dart';
+import 'forgot_password_screen.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -211,7 +212,32 @@ class _LoginScreenState extends State<LoginScreen> {
                             return null;
                           },
                         ),
-                        const SizedBox(height: 28),
+                        const SizedBox(height: 8),
+                        Align(
+                          alignment: isAr
+                              ? Alignment.centerLeft
+                              : Alignment.centerRight,
+                          child: TextButton(
+                            onPressed: () => Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                  builder: (_) =>
+                                      const ForgotPasswordScreen()),
+                            ),
+                            style: TextButton.styleFrom(
+                                padding: EdgeInsets.zero,
+                                minimumSize: const Size(0, 36)),
+                            child: Text(
+                              isAr ? 'نسيت كلمة المرور؟' : 'Forgot password?',
+                              style: const TextStyle(
+                                color: Color(0xFF1565C0),
+                                fontWeight: FontWeight.w600,
+                                fontSize: 13,
+                              ),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(height: 16),
                         ElevatedButton(
                           onPressed: auth.loading ? null : _submit,
                           child: auth.loading
