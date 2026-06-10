@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 import '../providers/auth_provider.dart';
 import '../providers/language_provider.dart';
 import 'dashboard_screen.dart';
+import 'otp_screen.dart';
 
 // ─── Age group options ────────────────────────────────────────────────────────
 const _ageGroups = [
@@ -85,36 +86,15 @@ class _RegisterScreenState extends State<RegisterScreen> {
     if (!mounted) return;
     final isAr = context.read<LanguageProvider>().isArabic;
     if (ok) {
-      // Show green success snackbar then navigate
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Row(
-            children: [
-              const Icon(Icons.check_circle_outline, color: Colors.white),
-              const SizedBox(width: 10),
-              Expanded(
-                child: Text(
-                  isAr
-                      ? 'تم إنشاء الحساب بنجاح!'
-                      : 'Account created successfully!',
-                  textDirection: isAr ? TextDirection.rtl : TextDirection.ltr,
-                ),
-              ),
-            ],
-          ),
-          backgroundColor: const Color(0xFF2E7D32),
-          behavior: SnackBarBehavior.floating,
-          margin: const EdgeInsets.all(16),
-          duration: const Duration(seconds: 2),
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-        ),
-      );
-      await Future.delayed(const Duration(milliseconds: 1500));
-      if (!mounted) return;
-      Navigator.pushAndRemoveUntil(
+      // Navigate to OTP verification screen
+      Navigator.pushReplacement(
         context,
-        MaterialPageRoute(builder: (_) => const DashboardScreen()),
-        (_) => false,
+        MaterialPageRoute(
+          builder: (_) => OtpScreen(
+            email: _emailCtrl.text.trim(),
+            password: _passCtrl.text,
+          ),
+        ),
       );
     } else {
       ScaffoldMessenger.of(context).showSnackBar(

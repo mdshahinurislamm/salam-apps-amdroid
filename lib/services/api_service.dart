@@ -7,7 +7,6 @@ class ApiService {
   static const String _baseUrl = 'https://larapress.org/salam/api';
 
   late final Dio _authDio;
-  late final Dio _fileDio;
 
   ApiService() {
     _authDio = Dio(
@@ -21,20 +20,9 @@ class ApiService {
         },
       ),
     );
-
-    _fileDio = Dio(
-      BaseOptions(
-        baseUrl: _baseUrl,
-        connectTimeout: const Duration(seconds: 20),
-        receiveTimeout: const Duration(seconds: 60),
-        headers: {
-          'Accept': 'application/pdf,*/*',
-        },
-      ),
-    );
   }
 
-  // ── Auth ─────────────────────────────────────────────────────────────────
+  // ── Register ──────────────────────────────────────────────────────────────
 
   Future<UserModel> register({
     required String firstName,
@@ -57,18 +45,14 @@ class ApiService {
       final body = res.data as Map<String, dynamic>;
       final message = (body['message'] ?? '').toString().toLowerCase();
 
-      // Server signals duplicate email
       if (message.contains('already') || message.contains('exist')) {
         throw 'emailAlreadyExists';
       }
 
-      // Server returned full user object (id present) — parse directly
       if (body['id'] != null) {
         return UserModel.fromJson(body);
       }
 
-      // Server returned only {"message": "User account created."} —
-      // build a minimal UserModel from what we know so the app can proceed.
       return UserModel(
         id: 0,
         firstName: firstName,
@@ -82,6 +66,8 @@ class ApiService {
     }
   }
 
+  // ── Login ─────────────────────────────────────────────────────────────────
+
   Future<UserModel> login({
     required String email,
     required String password,
@@ -91,7 +77,45 @@ class ApiService {
         'email': email,
         'password': password,
       });
-      return UserModel.fromJson(res.data as Map<String, dynamic>);
+
+      final body = res.data as Map<String, dynamic>;
+
+      // Server returns success:false when email not verified
+      if (body['success'] == false) {
+        final msg = (body['message'] ?? '').toString().toLowerCase();
+        if (msg.contains('verify') || msg.contains('verified')) {
+          throw 'emailNotVerified';
+        }
+        throw body['message']?.toString() ?? 'loginFailed';
+      }
+
+      // Wrong credentials — server returns message with no id
+      if (body['id'] == null) {
+        final msg = (body['message'] ?? '').toString().toLowerCase();
+        if (msg.contains('incorrect') || msg.contains('invalid') || msg.contains('username')) {
+          throw 'invalidCredentials';
+        }
+        throw msg.isNotEmpty ? msg : 'loginFailed';
+      }
+
+      return UserModel.fromJson(body);
+    } on DioException catch (e) {
+      throw _parseError(e);
+    }
+  }
+
+  // ── OTP Verification ──────────────────────────────────────────────────────
+
+  Future<Map<String, dynamic>> verifyOtp({
+    required String email,
+    required String otp,
+  }) async {
+    try {
+      final res = await _authDio.post('/verifyotp', data: {
+        'email': email,
+        'otp': otp,
+      });
+      return res.data as Map<String, dynamic>;
     } on DioException catch (e) {
       throw _parseError(e);
     }
@@ -127,10 +151,7 @@ class ApiService {
           headers: {'Accept': 'application/pdf,*/*'},
         ),
       );
-
-      if (res.statusCode != 200) {
-        throw 'serverError:${res.statusCode}';
-      }
+      if (res.statusCode != 200) throw 'serverError:${res.statusCode}';
       final bytes = res.data as List<int>;
       if (bytes.isEmpty) throw 'emptyResponse';
       return Uint8List.fromList(bytes);

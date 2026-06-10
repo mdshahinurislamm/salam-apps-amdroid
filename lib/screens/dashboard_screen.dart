@@ -151,9 +151,13 @@ class _DashboardScreenState extends State<DashboardScreen> {
           children: [
             _buildUserBanner(auth, isAr, userAge),
             Expanded(
-              child: _buildBody(
-                isAr: isAr,
-                posts: visiblePosts,
+              child: RefreshIndicator(
+                color: const Color(0xFF1565C0),
+                onRefresh: _loadPosts,
+                child: _buildBody(
+                  isAr: isAr,
+                  posts: visiblePosts,
+                ),
               ),
             ),
           ],
@@ -277,23 +281,34 @@ class _DashboardScreenState extends State<DashboardScreen> {
     }
 
     if (posts.isEmpty) {
-      return Center(
-        child: Padding(
-          padding: const EdgeInsets.all(32),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(Icons.folder_open_outlined,
-                  size: 64, color: Colors.grey.shade400),
-              const SizedBox(height: 16),
-              Text(
-                isAr ? 'لا توجد ملفات متاحة' : 'No files available',
-                style: TextStyle(
-                    fontSize: 16, color: Colors.grey.shade600),
+      return ListView(
+        physics: const AlwaysScrollableScrollPhysics(),
+        children: [
+          SizedBox(
+            height: 300,
+            child: Center(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(Icons.folder_open_outlined,
+                      size: 64, color: Colors.grey.shade400),
+                  const SizedBox(height: 16),
+                  Text(
+                    isAr ? 'لا توجد ملفات متاحة' : 'No files available',
+                    style: TextStyle(
+                        fontSize: 16, color: Colors.grey.shade600),
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    isAr ? 'اسحب للأسفل للتحديث' : 'Pull down to refresh',
+                    style: TextStyle(
+                        fontSize: 13, color: Colors.grey.shade400),
+                  ),
+                ],
               ),
-            ],
+            ),
           ),
-        ),
+        ],
       );
     }
 
@@ -303,6 +318,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
         isAr ? 'الكتب العربية' : 'English Books';
 
     return ListView(
+      physics: const AlwaysScrollableScrollPhysics(),
       padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
       children: [
         _sectionHeader(

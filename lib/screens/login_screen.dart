@@ -4,6 +4,7 @@ import '../providers/auth_provider.dart';
 import '../providers/language_provider.dart';
 import 'register_screen.dart';
 import 'dashboard_screen.dart';
+import 'otp_screen.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -41,16 +42,71 @@ class _LoginScreenState extends State<LoginScreen> {
       );
     } else {
       final isAr = context.read<LanguageProvider>().isArabic;
+
+      // If email not verified → send to OTP screen
+      if (auth.error == 'emailNotVerified') {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Row(
+              children: [
+                const Icon(Icons.mark_email_unread_outlined,
+                    color: Colors.white, size: 20),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Text(
+                    isAr
+                        ? 'يرجى التحقق من بريدك الإلكتروني أولاً'
+                        : 'Please verify your email first',
+                    textDirection:
+                        isAr ? TextDirection.rtl : TextDirection.ltr,
+                  ),
+                ),
+              ],
+            ),
+            backgroundColor: Colors.orange.shade700,
+            behavior: SnackBarBehavior.floating,
+            margin: const EdgeInsets.all(16),
+            duration: const Duration(seconds: 3),
+            shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(8)),
+            action: SnackBarAction(
+              label: isAr ? 'تحقق' : 'Verify',
+              textColor: Colors.white,
+              onPressed: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) => OtpScreen(
+                        email: _emailCtrl.text.trim(),
+                        password: _passCtrl.text),
+                  ),
+                );
+              },
+            ),
+          ),
+        );
+        return;
+      }
+
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text(
-            _mapError(auth.error, isAr),
-            textDirection: isAr ? TextDirection.rtl : TextDirection.ltr,
+          content: Row(
+            children: [
+              const Icon(Icons.error_outline, color: Colors.white, size: 20),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Text(
+                  _mapError(auth.error, isAr),
+                  textDirection: isAr ? TextDirection.rtl : TextDirection.ltr,
+                ),
+              ),
+            ],
           ),
           backgroundColor: Colors.red.shade700,
           behavior: SnackBarBehavior.floating,
           margin: const EdgeInsets.all(16),
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+          shape:
+              RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
         ),
       );
     }
@@ -58,10 +114,26 @@ class _LoginScreenState extends State<LoginScreen> {
 
   String _mapError(String? error, bool isAr) {
     if (error == null) return isAr ? 'فشل تسجيل الدخول' : 'Login failed';
-    if (error == 'networkError') {
-      return isAr ? 'خطأ في الشبكة. حاول مرة أخرى.' : 'Network error. Please try again.';
+    switch (error) {
+      case 'invalidCredentials':
+        return isAr
+            ? 'البريد الإلكتروني أو كلمة المرور غير صحيحة'
+            : 'Incorrect email or password';
+      case 'emailNotVerified':
+        return isAr
+            ? 'يرجى التحقق من بريدك الإلكتروني أولاً'
+            : 'Please verify your email first';
+      case 'networkError':
+        return isAr
+            ? 'خطأ في الشبكة. حاول مرة أخرى.'
+            : 'Network error. Please try again.';
+      case 'timeoutError':
+        return isAr
+            ? 'انتهت مهلة الاتصال. حاول مرة أخرى.'
+            : 'Connection timed out. Please try again.';
+      default:
+        return error;
     }
-    return error;
   }
 
   @override
@@ -78,9 +150,7 @@ class _LoginScreenState extends State<LoginScreen> {
           child: SingleChildScrollView(
             child: Column(
               children: [
-                // Top header with gradient
                 _buildHeader(context, isAr, lang),
-                // Form card
                 Padding(
                   padding: const EdgeInsets.all(24),
                   child: Form(
@@ -88,52 +158,60 @@ class _LoginScreenState extends State<LoginScreen> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
-                        // Email field
                         TextFormField(
                           controller: _emailCtrl,
                           keyboardType: TextInputType.emailAddress,
                           textDirection: TextDirection.ltr,
                           textAlign: isAr ? TextAlign.right : TextAlign.left,
                           decoration: InputDecoration(
-                            labelText: isAr ? 'البريد الإلكتروني' : 'Email',
+                            labelText:
+                                isAr ? 'البريد الإلكتروني' : 'Email',
                             prefixIcon: const Icon(Icons.email_outlined),
                           ),
                           validator: (v) {
                             if (v == null || v.isEmpty) {
-                              return isAr ? 'البريد الإلكتروني مطلوب' : 'Email is required';
+                              return isAr
+                                  ? 'البريد الإلكتروني مطلوب'
+                                  : 'Email is required';
                             }
                             if (!v.contains('@')) {
-                              return isAr ? 'بريد إلكتروني غير صالح' : 'Invalid email';
+                              return isAr
+                                  ? 'بريد إلكتروني غير صالح'
+                                  : 'Invalid email';
                             }
                             return null;
                           },
                         ),
                         const SizedBox(height: 16),
-                        // Password field
                         TextFormField(
                           controller: _passCtrl,
                           obscureText: _obscurePass,
                           textDirection: TextDirection.ltr,
                           textAlign: isAr ? TextAlign.right : TextAlign.left,
                           decoration: InputDecoration(
-                            labelText: isAr ? 'كلمة المرور' : 'Password',
+                            labelText:
+                                isAr ? 'كلمة المرور' : 'Password',
                             prefixIcon: const Icon(Icons.lock_outlined),
                             suffixIcon: IconButton(
                               icon: Icon(
-                                _obscurePass ? Icons.visibility_off_outlined : Icons.visibility_outlined,
+                                _obscurePass
+                                    ? Icons.visibility_off_outlined
+                                    : Icons.visibility_outlined,
                               ),
-                              onPressed: () => setState(() => _obscurePass = !_obscurePass),
+                              onPressed: () => setState(
+                                  () => _obscurePass = !_obscurePass),
                             ),
                           ),
                           validator: (v) {
                             if (v == null || v.isEmpty) {
-                              return isAr ? 'كلمة المرور مطلوبة' : 'Password is required';
+                              return isAr
+                                  ? 'كلمة المرور مطلوبة'
+                                  : 'Password is required';
                             }
                             return null;
                           },
                         ),
                         const SizedBox(height: 28),
-                        // Sign In button
                         ElevatedButton(
                           onPressed: auth.loading ? null : _submit,
                           child: auth.loading
@@ -145,39 +223,50 @@ class _LoginScreenState extends State<LoginScreen> {
                                     color: Colors.white,
                                   ),
                                 )
-                              : Text(isAr ? 'تسجيل الدخول' : 'Sign In'),
+                              : Text(
+                                  isAr ? 'تسجيل الدخول' : 'Sign In'),
                         ),
                         const SizedBox(height: 20),
-                        // Divider
                         Row(
                           children: [
-                            Expanded(child: Divider(color: Colors.grey.shade300)),
+                            Expanded(
+                                child: Divider(
+                                    color: Colors.grey.shade300)),
                             Padding(
-                              padding: const EdgeInsets.symmetric(horizontal: 12),
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 12),
                               child: Text(
                                 isAr ? 'أو' : 'OR',
-                                style: TextStyle(color: Colors.grey.shade500, fontSize: 13),
+                                style: TextStyle(
+                                    color: Colors.grey.shade500,
+                                    fontSize: 13),
                               ),
                             ),
-                            Expanded(child: Divider(color: Colors.grey.shade300)),
+                            Expanded(
+                                child: Divider(
+                                    color: Colors.grey.shade300)),
                           ],
                         ),
                         const SizedBox(height: 20),
-                        // Register button (outlined)
                         OutlinedButton(
                           onPressed: () => Navigator.push(
                             context,
-                            MaterialPageRoute(builder: (_) => const RegisterScreen()),
+                            MaterialPageRoute(
+                                builder: (_) => const RegisterScreen()),
                           ),
                           style: OutlinedButton.styleFrom(
-                            padding: const EdgeInsets.symmetric(vertical: 16),
-                            side: const BorderSide(color: Color(0xFF1565C0)),
+                            padding: const EdgeInsets.symmetric(
+                                vertical: 16),
+                            side: const BorderSide(
+                                color: Color(0xFF1565C0)),
                             shape: RoundedRectangleBorder(
                               borderRadius: BorderRadius.circular(12),
                             ),
                           ),
                           child: Text(
-                            isAr ? 'إنشاء حساب جديد' : 'Create New Account',
+                            isAr
+                                ? 'إنشاء حساب جديد'
+                                : 'Create New Account',
                             style: const TextStyle(
                               color: Color(0xFF1565C0),
                               fontWeight: FontWeight.w600,
@@ -197,7 +286,8 @@ class _LoginScreenState extends State<LoginScreen> {
     );
   }
 
-  Widget _buildHeader(BuildContext context, bool isAr, LanguageProvider lang) {
+  Widget _buildHeader(
+      BuildContext context, bool isAr, LanguageProvider lang) {
     return Container(
       width: double.infinity,
       decoration: const BoxDecoration(
@@ -216,13 +306,12 @@ class _LoginScreenState extends State<LoginScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // Language toggle at top
             Align(
-              alignment: isAr ? Alignment.centerLeft : Alignment.centerRight,
+              alignment:
+                  isAr ? Alignment.centerLeft : Alignment.centerRight,
               child: _LanguageToggle(provider: lang),
             ),
             const SizedBox(height: 28),
-            // App icon
             Container(
               width: 64,
               height: 64,
@@ -230,7 +319,8 @@ class _LoginScreenState extends State<LoginScreen> {
                 color: Colors.white.withOpacity(0.2),
                 borderRadius: BorderRadius.circular(16),
               ),
-              child: const Icon(Icons.picture_as_pdf, size: 36, color: Colors.white),
+              child: const Icon(Icons.picture_as_pdf,
+                  size: 36, color: Colors.white),
             ),
             const SizedBox(height: 20),
             Text(
@@ -256,8 +346,6 @@ class _LoginScreenState extends State<LoginScreen> {
   }
 }
 
-// ─── Language Toggle Widget ──────────────────────────────────────────────────
-
 class _LanguageToggle extends StatelessWidget {
   final LanguageProvider provider;
   const _LanguageToggle({required this.provider});
@@ -272,8 +360,14 @@ class _LanguageToggle extends StatelessWidget {
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          _LangBtn(label: 'EN', selected: !provider.isArabic, onTap: provider.setEnglish),
-          _LangBtn(label: 'AR', selected: provider.isArabic, onTap: provider.setArabic),
+          _LangBtn(
+              label: 'EN',
+              selected: !provider.isArabic,
+              onTap: provider.setEnglish),
+          _LangBtn(
+              label: 'AR',
+              selected: provider.isArabic,
+              onTap: provider.setArabic),
         ],
       ),
     );
@@ -284,14 +378,16 @@ class _LangBtn extends StatelessWidget {
   final String label;
   final bool selected;
   final VoidCallback onTap;
-  const _LangBtn({required this.label, required this.selected, required this.onTap});
+  const _LangBtn(
+      {required this.label, required this.selected, required this.onTap});
 
   @override
   Widget build(BuildContext context) {
     return GestureDetector(
       onTap: onTap,
       child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+        padding:
+            const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
         decoration: BoxDecoration(
           color: selected ? Colors.white : Colors.transparent,
           borderRadius: BorderRadius.circular(7),
