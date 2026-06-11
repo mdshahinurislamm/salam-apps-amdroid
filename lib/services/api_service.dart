@@ -161,6 +161,107 @@ class ApiService {
   }
 
 
+
+  // ── Profile ───────────────────────────────────────────────────────────────
+
+  /// GET /profile  — requires Bearer token
+  Future<UserModel> getProfile({required String token}) async {
+    try {
+      final res = await _authDio.get(
+        '/profile',
+        options: Options(headers: {'Authorization': 'Bearer $token'}),
+      );
+      final body = res.data as Map<String, dynamic>;
+      final data = body['data'] ?? body;
+      return UserModel.fromJson(data as Map<String, dynamic>);
+    } on DioException catch (e) {
+      throw _parseError(e);
+    }
+  }
+
+  /// POST /profile/update  — requires Bearer token
+  Future<UserModel> updateProfile({
+    required String token,
+    required String firstName,
+    required String lastName,
+    required String email,
+    required String age,
+    required String country,
+  }) async {
+    try {
+      final res = await _authDio.post(
+        '/profile/update',
+        data: {
+          'first_name': firstName,
+          'last_name': lastName,
+          'email': email,
+          'age': age,
+          'country': country,
+        },
+        options: Options(headers: {'Authorization': 'Bearer $token'}),
+      );
+      final body = res.data as Map<String, dynamic>;
+      if (body['success'] == false) {
+        throw body['message']?.toString() ?? 'updateFailed';
+      }
+      final data = body['data'] ?? body;
+      return UserModel.fromJson(data as Map<String, dynamic>);
+    } on DioException catch (e) {
+      throw _parseError(e);
+    }
+  }
+
+  /// POST /profile/changepassword  — requires Bearer token
+  Future<void> changePassword({
+    required String token,
+    required String currentPassword,
+    required String newPassword,
+    required String newPasswordConfirmation,
+  }) async {
+    try {
+      final res = await _authDio.post(
+        '/profile/changepassword',
+        data: {
+          'current_password': currentPassword,
+          'new_password': newPassword,
+          'new_password_confirmation': newPasswordConfirmation,
+        },
+        options: Options(headers: {'Authorization': 'Bearer $token'}),
+      );
+      final body = res.data as Map<String, dynamic>;
+      if (body['success'] == false) {
+        final msg = (body['message'] ?? '').toString().toLowerCase();
+        if (msg.contains('incorrect')) throw 'wrongCurrentPassword';
+        throw body['message']?.toString() ?? 'changeFailed';
+      }
+    } on DioException catch (e) {
+      if (e.response?.statusCode == 422) {
+        final data = e.response?.data;
+        if (data is Map) {
+          final msg = (data['message'] ?? '').toString().toLowerCase();
+          if (msg.contains('incorrect')) throw 'wrongCurrentPassword';
+        }
+      }
+      throw _parseError(e);
+    }
+  }
+
+  /// POST /profile/delete  — requires Bearer token
+  Future<void> deleteProfile({required String token}) async {
+    try {
+      final res = await _authDio.post(
+        '/profile/delete',
+        options: Options(headers: {'Authorization': 'Bearer $token'}),
+      );
+      final body = res.data as Map<String, dynamic>;
+      if (body['success'] == false) {
+        throw body['message']?.toString() ?? 'deleteFailed';
+      }
+    } on DioException catch (e) {
+      throw _parseError(e);
+    }
+  }
+
   // ── Forgot Password ───────────────────────────────────────────────────────
 
   Future<void> forgotPassword({required String email}) async {

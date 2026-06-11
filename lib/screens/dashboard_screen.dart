@@ -9,6 +9,7 @@ import '../providers/auth_provider.dart';
 import '../providers/language_provider.dart';
 import '../services/api_service.dart';
 import 'login_screen.dart';
+import 'profile_screen.dart';
 
 class DashboardScreen extends StatefulWidget {
   const DashboardScreen({super.key});
@@ -139,6 +140,14 @@ class _DashboardScreenState extends State<DashboardScreen> {
             Padding(
               padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 4),
               child: _LangToggle(provider: lang),
+            ),
+            IconButton(
+              icon: const Icon(Icons.person_outlined),
+              tooltip: isAr ? 'الملف الشخصي' : 'Profile',
+              onPressed: () => Navigator.push(
+                context,
+                MaterialPageRoute(builder: (_) => const ProfileScreen()),
+              ),
             ),
             IconButton(
               icon: const Icon(Icons.logout_rounded),

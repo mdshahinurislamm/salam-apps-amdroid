@@ -19,6 +19,9 @@ class AuthProvider extends ChangeNotifier {
   bool get loading => _loading;
   String? get error => _error;
   bool get isLoggedIn => _user != null;
+  String get token => _user?.accessToken ?? '';
+
+  // ── Session persistence ───────────────────────────────────────────────────
 
   Future<File> _sessionFile() async {
     final dir = await _platform.invokeMethod<String>('getCacheDir');
@@ -40,16 +43,7 @@ class AuthProvider extends ChangeNotifier {
     if (_user == null) return;
     try {
       final file = await _sessionFile();
-      await file.writeAsString(
-        jsonEncode({
-          'id': _user!.id,
-          'first_name': _user!.firstName,
-          'last_name': _user!.lastName,
-          'email': _user!.email,
-          'role': _user!.role,
-          'age': _user!.age,
-        }),
-      );
+      await file.writeAsString(jsonEncode(_user!.toJson()));
     } catch (_) {}
   }
 
@@ -59,6 +53,8 @@ class AuthProvider extends ChangeNotifier {
       if (await file.exists()) await file.delete();
     } catch (_) {}
   }
+
+  // ── Auth actions ──────────────────────────────────────────────────────────
 
   Future<bool> register({
     required String firstName,
@@ -115,8 +111,92 @@ class AuthProvider extends ChangeNotifier {
     notifyListeners();
   }
 
+  // ── Profile actions ───────────────────────────────────────────────────────
+
+  Future<bool> updateProfile({
+    required String firstName,
+    required String lastName,
+    required String email,
+    required String age,
+    required String country,
+  }) async {
+    _loading = true;
+    _error = null;
+    notifyListeners();
+    try {
+      final updated = await _api.updateProfile(
+        token: token,
+        firstName: firstName,
+        lastName: lastName,
+        email: email,
+        age: age,
+        country: country,
+      );
+      // Preserve the token from the existing session
+      _user = updated.copyWith(accessToken: token);
+      await _persistUser();
+      return true;
+    } catch (e) {
+      _error = e.toString();
+      return false;
+    } finally {
+      _loading = false;
+      notifyListeners();
+    }
+  }
+
+  Future<bool> changePassword({
+    required String currentPassword,
+    required String newPassword,
+    required String newPasswordConfirmation,
+  }) async {
+    _loading = true;
+    _error = null;
+    notifyListeners();
+    try {
+      await _api.changePassword(
+        token: token,
+        currentPassword: currentPassword,
+        newPassword: newPassword,
+        newPasswordConfirmation: newPasswordConfirmation,
+      );
+      return true;
+    } catch (e) {
+      _error = e.toString();
+      return false;
+    } finally {
+      _loading = false;
+      notifyListeners();
+    }
+  }
+
+  Future<bool> deleteAccount() async {
+    _loading = true;
+    _error = null;
+    notifyListeners();
+    try {
+      await _api.deleteProfile(token: token);
+      _user = null;
+      await _clearSession();
+      return true;
+    } catch (e) {
+      _error = e.toString();
+      return false;
+    } finally {
+      _loading = false;
+      notifyListeners();
+    }
+  }
+
   void clearError() {
     _error = null;
+    notifyListeners();
+  }
+
+  // Update local user data without API call (e.g. after profile fetch)
+  void setUser(UserModel u) {
+    _user = u;
+    _persistUser();
     notifyListeners();
   }
 }
