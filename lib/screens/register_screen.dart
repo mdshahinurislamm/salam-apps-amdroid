@@ -7,8 +7,8 @@ import 'otp_screen.dart';
 
 // ─── Age group options ────────────────────────────────────────────────────────
 const _ageGroups = [
-  {'value': 'group_a', 'en': 'Group A', 'ar': 'المجموعة أ'},
-  {'value': 'group_b', 'en': 'Group B', 'ar': 'المجموعة ب'},
+  {'value': 'group_a', 'en': 'Ages 4–8', 'ar': 'المجموعة أ'},
+  {'value': 'group_b', 'en': 'Ages 12–16', 'ar': 'المجموعة ب'},
 ];
 
 // ─── Country list ─────────────────────────────────────────────────────────────
@@ -52,6 +52,7 @@ class RegisterScreen extends StatefulWidget {
 class _RegisterScreenState extends State<RegisterScreen> {
   final _formKey = GlobalKey<FormState>();
   final _firstNameCtrl = TextEditingController();
+  final _lastNameCtrl = TextEditingController();
   final _emailCtrl = TextEditingController();
   final _passCtrl = TextEditingController();
   final _confirmPassCtrl = TextEditingController();
@@ -66,6 +67,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
   @override
   void dispose() {
     _firstNameCtrl.dispose();
+    _lastNameCtrl.dispose();
     _emailCtrl.dispose();
     _passCtrl.dispose();
     _confirmPassCtrl.dispose();
@@ -78,6 +80,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
     auth.clearError();
     final ok = await auth.register(
       firstName: _firstNameCtrl.text.trim(),
+      lastName: _lastNameCtrl.text.trim(),
       email: _emailCtrl.text.trim(),
       password: _passCtrl.text,
       age: _selectedAge!,
@@ -205,6 +208,25 @@ class _RegisterScreenState extends State<RegisterScreen> {
                           textCapitalization: TextCapitalization.words,
                           decoration: InputDecoration(
                             labelText: isAr ? 'الاسم الأول' : 'First Name',
+                            prefixIcon:
+                                const Icon(Icons.person_outlined),
+                          ),
+                          validator: (v) {
+                            if (v == null || v.isEmpty) {
+                              return isAr
+                                  ? 'الاسم مطلوب'
+                                  : 'Name is required';
+                            }
+                            return null;
+                          },
+                        ),
+                        const SizedBox(height: 16),
+
+                        TextFormField(
+                          controller: _lastNameCtrl,
+                          textCapitalization: TextCapitalization.words,
+                          decoration: InputDecoration(
+                            labelText: isAr ? 'اسم العائلة' : 'Last Name',
                             prefixIcon:
                                 const Icon(Icons.person_outlined),
                           ),
@@ -400,7 +422,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
                                 isAr ? 'تسجيل الدخول' : 'Sign In',
                                 style: const TextStyle(
                                   fontWeight: FontWeight.bold,
-                                  color: Color(0xFF1565C0),
+                                  color: Color(0xFF9A9B78),
                                 ),
                               ),
                             ),
@@ -426,7 +448,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
         gradient: LinearGradient(
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
-          colors: [Color(0xFF1565C0), Color(0xFF0D47A1)],
+          colors: [Color(0xFF9A9B78), Color(0xFF9A9B78)],
         ),
         borderRadius: BorderRadius.only(
           bottomLeft: Radius.circular(32),
@@ -540,7 +562,7 @@ class _LangBtn extends StatelessWidget {
         child: Text(
           label,
           style: TextStyle(
-            color: selected ? const Color(0xFF1565C0) : Colors.white,
+            color: selected ? const Color(0xFF9A9B78) : Colors.white,
             fontWeight: FontWeight.bold,
             fontSize: 13,
           ),

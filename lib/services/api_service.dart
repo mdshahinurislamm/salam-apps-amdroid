@@ -2,6 +2,7 @@ import 'dart:typed_data';
 import 'package:dio/dio.dart';
 import '../models/user_model.dart';
 import '../models/post_model.dart';
+import '../models/banner_model.dart';
 
 class ApiService {
   static const String _baseUrl = 'https://larapress.org/salam/api';
@@ -26,6 +27,7 @@ class ApiService {
 
   Future<UserModel> register({
     required String firstName,
+    required String lastName,
     required String email,
     required String password,
     required String age,
@@ -35,6 +37,7 @@ class ApiService {
     try {
       final res = await _authDio.post('/signup', data: {
         'first_name': firstName,
+        'last_name': lastName,
         'email': email,
         'password': password,
         'age': age,
@@ -56,7 +59,7 @@ class ApiService {
       return UserModel(
         id: 0,
         firstName: firstName,
-        lastName: '',
+        lastName: lastName,
         email: email,
         role: role.toString(),
         age: age,
@@ -131,6 +134,22 @@ class ApiService {
           data is Map ? (data['data'] as List<dynamic>) : data as List<dynamic>;
       return list
           .map((e) => PostModel.fromJson(e as Map<String, dynamic>))
+          .toList();
+    } on DioException catch (e) {
+      throw _parseError(e);
+    }
+  }
+
+  // ── Banners ───────────────────────────────────────────────────────────────
+
+  Future<List<BannerModel>> fetchBanners() async {
+    try {
+      final res = await _authDio.get('/banners');
+      final data = res.data;
+      final List<dynamic> list =
+          data is Map ? (data['data'] as List<dynamic>) : data as List<dynamic>;
+      return list
+          .map((e) => BannerModel.fromJson(e as Map<String, dynamic>))
           .toList();
     } on DioException catch (e) {
       throw _parseError(e);

@@ -52,7 +52,7 @@ class _MyAppState extends State<MyApp> {
     final lang = context.watch<LanguageProvider>();
 
     return MaterialApp(
-      title: 'My App',
+      title: 'Salam Apps',
       debugShowCheckedModeBanner: false,
       locale: lang.locale,
       supportedLocales: const [
@@ -67,7 +67,7 @@ class _MyAppState extends State<MyApp> {
       theme: ThemeData(
         useMaterial3: true,
         colorScheme: ColorScheme.fromSeed(
-          seedColor: const Color(0xFF1565C0),
+          seedColor: const Color(0xFF9A9B78),
           brightness: Brightness.light,
         ),
         fontFamily: 'Roboto',
@@ -84,7 +84,7 @@ class _MyAppState extends State<MyApp> {
           ),
           focusedBorder: OutlineInputBorder(
             borderRadius: BorderRadius.circular(12),
-            borderSide: const BorderSide(color: Color(0xFF1565C0), width: 2),
+            borderSide: const BorderSide(color: Color(0xFF9A9B78), width: 2),
           ),
           errorBorder: OutlineInputBorder(
             borderRadius: BorderRadius.circular(12),
@@ -94,7 +94,7 @@ class _MyAppState extends State<MyApp> {
         ),
         elevatedButtonTheme: ElevatedButtonThemeData(
           style: ElevatedButton.styleFrom(
-            backgroundColor: const Color(0xFF1565C0),
+            backgroundColor: const Color(0xFF9A9B78),
             foregroundColor: Colors.white,
             padding: const EdgeInsets.symmetric(vertical: 16),
             shape: RoundedRectangleBorder(
@@ -114,13 +114,50 @@ class _MyAppState extends State<MyApp> {
   }
 }
 
+// class _SplashScreen extends StatelessWidget {
+//   const _SplashScreen();
+
+//   @override
+//   Widget build(BuildContext context) {
+//     return Scaffold(
+//       backgroundColor: const Color(0xFF9A9B78),
+//       body: Center(
+//         child: Column(
+//           mainAxisSize: MainAxisSize.min,
+//           children: [
+//             Container(
+//               width: 80,
+//               height: 80,
+//               decoration: BoxDecoration(
+//                 color: Colors.white,
+//                 borderRadius: BorderRadius.circular(20),
+//               ),
+//               //child: const Icon(Icons.picture_as_pdf, size: 48, color: Color(0xFF9A9B78)),
+//               child: ClipRRect(
+//               // borderRadius: BorderRadius.circular(16),
+//                 child: Image.asset(
+//                   'assets/images/logo.png', // <-- your image path
+//                   // fit: BoxFit.cover,
+//                   color: Color(0xFF9A9B78),
+//                 ),
+//               ),
+//             ),
+//             const SizedBox(height: 24),
+//             const CircularProgressIndicator(color: Colors.white),
+//           ],
+//         ),
+//       ),
+//     );
+//   }
+// }
+
 class _SplashScreen extends StatelessWidget {
   const _SplashScreen();
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFF1565C0),
+      backgroundColor: const Color(0xFF9A9B78),
       body: Center(
         child: Column(
           mainAxisSize: MainAxisSize.min,
@@ -132,9 +169,33 @@ class _SplashScreen extends StatelessWidget {
                 color: Colors.white,
                 borderRadius: BorderRadius.circular(20),
               ),
-              child: const Icon(Icons.picture_as_pdf, size: 48, color: Color(0xFF1565C0)),
+              child: ClipRRect(
+                child: Image.asset(
+                  'assets/images/logo.png',
+                  color: const Color(0xFF9A9B78),
+                ),
+              ),
             ),
-            const SizedBox(height: 24),
+            const SizedBox(height: 20),
+            const Text(
+              'Salam Institute',
+              style: TextStyle(
+                color: Colors.white,
+                fontSize: 22,
+                fontWeight: FontWeight.bold,
+                letterSpacing: 0.5,
+              ),
+            ),
+            const SizedBox(height: 6),
+            // Text(
+            //   '',
+            //   style: TextStyle(
+            //     color: Colors.white.withOpacity(0.85),
+            //     fontSize: 13,
+            //     fontWeight: FontWeight.w400,
+            //   ),
+            // ),
+            const SizedBox(height: 32),
             const CircularProgressIndicator(color: Colors.white),
           ],
         ),

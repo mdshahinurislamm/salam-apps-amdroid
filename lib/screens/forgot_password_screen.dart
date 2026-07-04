@@ -695,7 +695,7 @@ class _Header extends StatelessWidget {
         gradient: LinearGradient(
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
-          colors: [Color(0xFF1565C0), Color(0xFF0D47A1)],
+          colors: [Color(0xFF9A9B78), Color(0xFF9A9B78)],
         ),
         borderRadius: BorderRadius.only(
           bottomLeft: Radius.circular(32),
@@ -795,12 +795,12 @@ class _BackToLogin extends StatelessWidget {
         icon: Icon(
           isAr ? Icons.arrow_forward_ios : Icons.arrow_back_ios,
           size: 14,
-          color: const Color(0xFF1565C0),
+          color: const Color(0xFF9A9B78),
         ),
         label: Text(
           isAr ? 'العودة لتسجيل الدخول' : 'Back to Sign In',
           style: const TextStyle(
-              color: Color(0xFF1565C0), fontWeight: FontWeight.w600),
+              color: Color(0xFF9A9B78), fontWeight: FontWeight.w600),
         ),
       ),
     );
@@ -920,7 +920,7 @@ class _OtpBox extends StatelessWidget {
             ),
             focusedBorder: OutlineInputBorder(
               borderRadius: BorderRadius.circular(12),
-              borderSide: const BorderSide(color: Color(0xFF1565C0), width: 2),
+              borderSide: const BorderSide(color: Color(0xFF9A9B78), width: 2),
             ),
             filled: true,
             fillColor: disabled
@@ -973,7 +973,7 @@ class _LBtn extends StatelessWidget {
         ),
         child: Text(label,
             style: TextStyle(
-              color: selected ? const Color(0xFF1565C0) : Colors.white,
+              color: selected ? const Color(0xFF9A9B78) : Colors.white,
               fontWeight: FontWeight.bold,
               fontSize: 13,
             )),

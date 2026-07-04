@@ -58,6 +58,7 @@ class AuthProvider extends ChangeNotifier {
 
   Future<bool> register({
     required String firstName,
+    required String lastName,
     required String email,
     required String password,
     required String age,
@@ -69,6 +70,7 @@ class AuthProvider extends ChangeNotifier {
     try {
       _user = await _api.register(
         firstName: firstName,
+        lastName: lastName,
         email: email,
         password: password,
         age: age,

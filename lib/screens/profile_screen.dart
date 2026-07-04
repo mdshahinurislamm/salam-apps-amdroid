@@ -7,8 +7,8 @@ import 'login_screen.dart';
 
 // Age group options (same as register screen)
 const _ageGroups = [
-  {'value': 'group_a', 'en': 'Group A', 'ar': 'المجموعة أ'},
-  {'value': 'group_b', 'en': 'Group B', 'ar': 'المجموعة ب'},
+  {'value': 'group_a', 'en': 'Ages 4–8', 'ar': 'المجموعة أ'},
+  {'value': 'group_b', 'en': 'Ages 12–16', 'ar': 'المجموعة ب'},
 ];
 
 const _countries = [
@@ -80,7 +80,7 @@ class _ProfileScreenState extends State<ProfileScreen>
             SliverAppBar(
               expandedHeight: 320,
               pinned: true,
-              backgroundColor: const Color(0xFF1565C0),
+              backgroundColor: const Color(0xFF9A9B78),
               foregroundColor: Colors.white,
               leading: IconButton(
                 icon: Icon(isAr
@@ -135,7 +135,7 @@ class _ProfileHeader extends StatelessWidget {
         gradient: LinearGradient(
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
-          colors: [Color(0xFF1565C0), Color(0xFF0D47A1)],
+          colors: [Color(0xFF9A9B78), Color(0xFF9A9B78)],
         ),
       ),
       child: Column(
@@ -795,10 +795,10 @@ class _SectionCard extends StatelessWidget {
               Container(
                 padding: const EdgeInsets.all(8),
                 decoration: BoxDecoration(
-                  color: const Color(0xFF1565C0).withOpacity(0.1),
+                  color: const Color(0xFF9A9B78).withOpacity(0.1),
                   borderRadius: BorderRadius.circular(10),
                 ),
-                child: Icon(icon, color: const Color(0xFF1565C0), size: 20),
+                child: Icon(icon, color: const Color(0xFF9A9B78), size: 20),
               ),
               const SizedBox(width: 12),
               Column(

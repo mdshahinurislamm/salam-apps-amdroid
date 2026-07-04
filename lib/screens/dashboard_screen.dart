@@ -1,9 +1,11 @@
+import 'dart:async';
 import 'dart:io';
 import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_pdfview/flutter_pdfview.dart';
 import 'package:provider/provider.dart';
+import '../models/banner_model.dart';
 import '../models/post_model.dart';
 import '../providers/auth_provider.dart';
 import '../providers/language_provider.dart';
@@ -29,10 +31,66 @@ class _DashboardScreenState extends State<DashboardScreen> {
   bool _postsLoading = false;
   String? _postsError;
 
+  // Banner slider state
+  List<BannerModel> _banners = [];
+  bool _bannersLoading = false;
+  String? _bannersError;
+  final PageController _bannerController =
+      PageController(viewportFraction: 1.0);
+  Timer? _bannerTimer;
+  int _currentBanner = 0;
+
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) => _loadPosts());
+    _loadBanners();
+  }
+
+  @override
+  void dispose() {
+    _bannerTimer?.cancel();
+    _bannerController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _loadBanners() async {
+    if (!mounted) return;
+    setState(() {
+      _bannersLoading = true;
+      _bannersError = null;
+    });
+    try {
+      final banners = await _api.fetchBanners();
+      if (!mounted) return;
+      setState(() {
+        _banners = banners;
+        _bannersLoading = false;
+      });
+      debugPrint('Banners loaded: ${banners.length}');
+      _startBannerAutoSlide();
+    } catch (e) {
+      debugPrint('Banner load failed: $e');
+      if (!mounted) return;
+      setState(() {
+        _bannersError = e.toString();
+        _bannersLoading = false;
+      });
+    }
+  }
+
+  void _startBannerAutoSlide() {
+    _bannerTimer?.cancel();
+    if (_banners.length <= 1) return;
+    _bannerTimer = Timer.periodic(const Duration(seconds: 4), (_) {
+      if (!mounted || !_bannerController.hasClients) return;
+      final next = (_currentBanner + 1) % _banners.length;
+      _bannerController.animateToPage(
+        next,
+        duration: const Duration(milliseconds: 400),
+        curve: Curves.easeInOut,
+      );
+    });
   }
 
   Future<String> _getCacheDir() async {
@@ -129,13 +187,13 @@ class _DashboardScreenState extends State<DashboardScreen> {
       child: Scaffold(
         backgroundColor: Colors.grey.shade100,
         appBar: AppBar(
-          backgroundColor: const Color(0xFF1565C0),
+          backgroundColor: const Color(0xFF9A9B78),
           foregroundColor: Colors.white,
           elevation: 0,
-          title: Text(
-            isAr ? 'لوحة التحكم' : 'Dashboard',
-            style: const TextStyle(fontWeight: FontWeight.bold),
-          ),
+          // title: Text(
+          //   isAr ? 'لوحة التحكم' : 'Dashboard',
+          //   style: const TextStyle(fontWeight: FontWeight.bold),
+          // ),
           actions: [
             Padding(
               padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 4),
@@ -159,9 +217,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
         body: Column(
           children: [
             _buildUserBanner(auth, isAr, userAge),
+            _buildBannerSlider(),
             Expanded(
               child: RefreshIndicator(
-                color: const Color(0xFF1565C0),
+                color: const Color(0xFF9A9B78),
                 onRefresh: _loadPosts,
                 child: _buildBody(
                   isAr: isAr,
@@ -195,10 +254,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
             width: 42,
             height: 42,
             decoration: BoxDecoration(
-              color: const Color(0xFF1565C0).withOpacity(0.1),
+              color: const Color(0xFF9A9B78).withOpacity(0.1),
               borderRadius: BorderRadius.circular(21),
             ),
-            child: const Icon(Icons.person, color: Color(0xFF1565C0)),
+            child: const Icon(Icons.person, color: Color(0xFF9A9B78)),
           ),
           const SizedBox(width: 12),
           Expanded(
@@ -206,9 +265,12 @@ class _DashboardScreenState extends State<DashboardScreen> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
+                  // isAr
+                  //     ? 'مرحباً، ${auth.user?.firstName ?? ''}'
+                  //     : 'Welcome, ${auth.user?.firstName ?? ''}',
                   isAr
-                      ? 'مرحباً، ${auth.user?.firstName ?? ''}'
-                      : 'Welcome, ${auth.user?.firstName ?? ''}',
+                      ? '${auth.user?.firstName ?? ''} ${auth.user?.lastName ?? ''}'
+                      : '${auth.user?.firstName ?? ''} ${auth.user?.lastName ?? ''}',
                   style: const TextStyle(
                       fontWeight: FontWeight.bold, fontSize: 16),
                 ),
@@ -225,11 +287,12 @@ class _DashboardScreenState extends State<DashboardScreen> {
               padding:
                   const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
               decoration: BoxDecoration(
-                color: const Color(0xFF1565C0),
+                color: const Color(0xFF9A9B78),
                 borderRadius: BorderRadius.circular(20),
               ),
               child: Text(
-                userAge.toUpperCase().replaceAll('_', ' '),
+                // userAge.toUpperCase().replaceAll('_', ' '),
+                auth.user?.age == 'group_a' ? 'Ages 4–8': 'Ages 12–16',
                 style: const TextStyle(
                   color: Colors.white,
                   fontSize: 11,
@@ -237,6 +300,135 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 ),
               ),
             ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildBannerSlider() {
+    if (_bannersLoading) {
+      return Container(
+        height: 160,
+        margin: const EdgeInsets.fromLTRB(20, 16, 20, 0),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(14),
+        ),
+        child: const Center(
+          child: SizedBox(
+            width: 24,
+            height: 24,
+            child: CircularProgressIndicator(
+              strokeWidth: 2,
+              color: Color(0xFF9A9B78),
+            ),
+          ),
+        ),
+      );
+    }
+
+    if (_bannersError != null) {
+      return Container(
+        height: 90,
+        margin: const EdgeInsets.fromLTRB(20, 16, 20, 0),
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          color: Colors.red.shade50,
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(color: Colors.red.shade100),
+        ),
+        child: Row(
+          children: [
+            Icon(Icons.error_outline_rounded,
+                color: Colors.red.shade300, size: 20),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Text(
+                'Banners failed to load: $_bannersError',
+                style: TextStyle(color: Colors.red.shade400, fontSize: 12),
+              ),
+            ),
+            IconButton(
+              icon: const Icon(Icons.refresh, size: 20),
+              color: Colors.red.shade300,
+              onPressed: _loadBanners,
+            ),
+          ],
+        ),
+      );
+    }
+
+    if (_banners.isEmpty) return const SizedBox.shrink();
+
+    return Container(
+      margin: const EdgeInsets.fromLTRB(20, 16, 20, 0),
+      height: 160,
+      child: Column(
+        children: [
+          Expanded(
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(14),
+              child: PageView.builder(
+                controller: _bannerController,
+                itemCount: _banners.length,
+                onPageChanged: (index) {
+                  if (mounted) setState(() => _currentBanner = index);
+                },
+                itemBuilder: (context, index) {
+                  final banner = _banners[index];
+                  return Image.network(
+                    banner.imageUrl,
+                    fit: BoxFit.cover,
+                    width: double.infinity,
+                    loadingBuilder: (context, child, progress) {
+                      if (progress == null) return child;
+                      return Container(
+                        color: Colors.grey.shade200,
+                        child: const Center(
+                          child: SizedBox(
+                            width: 20,
+                            height: 20,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              color: Color(0xFF9A9B78),
+                            ),
+                          ),
+                        ),
+                      );
+                    },
+                    errorBuilder: (context, error, stackTrace) {
+                      return Container(
+                        color: Colors.grey.shade200,
+                        child: Icon(Icons.broken_image_outlined,
+                            color: Colors.grey.shade400, size: 32),
+                      );
+                    },
+                  );
+                },
+              ),
+            ),
+          ),
+          if (_banners.length > 1) ...[
+            const SizedBox(height: 8),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: List.generate(_banners.length, (index) {
+                final isActive = index == _currentBanner;
+                return AnimatedContainer(
+                  duration: const Duration(milliseconds: 250),
+                  margin: const EdgeInsets.symmetric(horizontal: 3),
+                  width: isActive ? 18 : 6,
+                  height: 6,
+                  decoration: BoxDecoration(
+                    color: isActive
+                        ? const Color(0xFF9A9B78)
+                        : Colors.grey.shade300,
+                    borderRadius: BorderRadius.circular(3),
+                  ),
+                );
+              }),
+            ),
+          ],
         ],
       ),
     );
@@ -251,7 +443,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            const CircularProgressIndicator(color: Color(0xFF1565C0)),
+            const CircularProgressIndicator(color: Color(0xFF9A9B78)),
             const SizedBox(height: 16),
             Text(
               isAr ? 'جارٍ التحميل...' : 'Loading...',
@@ -322,7 +514,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
     }
 
     final color =
-        isAr ? const Color(0xFF2E7D32) : const Color(0xFF1565C0);
+        isAr ? const Color(0xFF9A9B78) : const Color(0xFF9A9B78);
     final sectionLabel =
         isAr ? 'الكتب العربية' : 'English Books';
 
@@ -512,7 +704,7 @@ class _PdfViewerScreenState extends State<_PdfViewerScreen> {
       child: Scaffold(
         backgroundColor: Colors.grey.shade100,
         appBar: AppBar(
-          backgroundColor: const Color(0xFF1565C0),
+          backgroundColor: const Color(0xFF9A9B78),
           foregroundColor: Colors.white,
           elevation: 0,
           title: Text(
@@ -545,7 +737,7 @@ class _PdfViewerScreenState extends State<_PdfViewerScreen> {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            const CircularProgressIndicator(color: Color(0xFF1565C0)),
+            const CircularProgressIndicator(color: Color(0xFF9A9B78)),
             const SizedBox(height: 16),
             Text(
               isAr ? 'جارٍ تحميل الملف...' : 'Loading PDF...',
@@ -665,7 +857,7 @@ class _Chip extends StatelessWidget {
           style: TextStyle(
             fontSize: 12,
             color: selected
-                ? const Color(0xFF1565C0)
+                ? const Color(0xFF9A9B78)
                 : Colors.white,
             fontWeight: FontWeight.bold,
           ),

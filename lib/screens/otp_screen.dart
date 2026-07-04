@@ -400,7 +400,7 @@ class _OtpScreenState extends State<OtpScreen> {
                             child: Text(
                               isAr ? 'تسجيل الدخول' : 'Sign In',
                               style: const TextStyle(
-                                color: Color(0xFF1565C0),
+                                color: Color(0xFF9A9B78),
                                 fontWeight: FontWeight.bold,
                               ),
                             ),
@@ -450,7 +450,7 @@ class _OtpScreenState extends State<OtpScreen> {
         gradient: LinearGradient(
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
-          colors: [Color(0xFF1565C0), Color(0xFF0D47A1)],
+          colors: [Color(0xFF9A9B78), Color(0xFF9A9B78)],
         ),
         borderRadius: BorderRadius.only(
           bottomLeft: Radius.circular(32),
@@ -637,7 +637,7 @@ class _LangBtn extends StatelessWidget {
         child: Text(
           label,
           style: TextStyle(
-            color: selected ? const Color(0xFF1565C0) : Colors.white,
+            color: selected ? const Color(0xFF9A9B78) : Colors.white,
             fontWeight: FontWeight.bold,
             fontSize: 13,
           ),

@@ -230,7 +230,7 @@ class _LoginScreenState extends State<LoginScreen> {
                             child: Text(
                               isAr ? 'نسيت كلمة المرور؟' : 'Forgot password?',
                               style: const TextStyle(
-                                color: Color(0xFF1565C0),
+                                color: Color(0xFF9A9B78),
                                 fontWeight: FontWeight.w600,
                                 fontSize: 13,
                               ),
@@ -284,7 +284,7 @@ class _LoginScreenState extends State<LoginScreen> {
                             padding: const EdgeInsets.symmetric(
                                 vertical: 16),
                             side: const BorderSide(
-                                color: Color(0xFF1565C0)),
+                                color: Color(0xFF9A9B78)),
                             shape: RoundedRectangleBorder(
                               borderRadius: BorderRadius.circular(12),
                             ),
@@ -294,7 +294,7 @@ class _LoginScreenState extends State<LoginScreen> {
                                 ? 'إنشاء حساب جديد'
                                 : 'Create New Account',
                             style: const TextStyle(
-                              color: Color(0xFF1565C0),
+                              color: Color(0xFF9A9B78),
                               fontWeight: FontWeight.w600,
                               fontSize: 16,
                             ),
@@ -320,7 +320,7 @@ class _LoginScreenState extends State<LoginScreen> {
         gradient: LinearGradient(
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
-          colors: [Color(0xFF1565C0), Color(0xFF0D47A1)],
+          colors: [Color(0xFF9A9B78), Color(0xFF9A9B78)],
         ),
         borderRadius: BorderRadius.only(
           bottomLeft: Radius.circular(32),
@@ -341,12 +341,20 @@ class _LoginScreenState extends State<LoginScreen> {
             Container(
               width: 64,
               height: 64,
-              decoration: BoxDecoration(
-                color: Colors.white.withOpacity(0.2),
-                borderRadius: BorderRadius.circular(16),
+              // decoration: BoxDecoration(
+              //   color: Colors.white.withOpacity(0.2),
+              //   borderRadius: BorderRadius.circular(16),
+              // ),
+            //   child: const Icon(Icons.picture_as_pdf,
+            //       size: 36, color: Colors.white),
+            // ),
+             child: ClipRRect(
+              // borderRadius: BorderRadius.circular(16),
+              child: Image.asset(
+                'assets/images/logo.png', // <-- your image path
+                // fit: BoxFit.cover,
               ),
-              child: const Icon(Icons.picture_as_pdf,
-                  size: 36, color: Colors.white),
+            ),
             ),
             const SizedBox(height: 20),
             Text(
@@ -421,7 +429,7 @@ class _LangBtn extends StatelessWidget {
         child: Text(
           label,
           style: TextStyle(
-            color: selected ? const Color(0xFF1565C0) : Colors.white,
+            color: selected ? const Color(0xFF9A9B78) : Colors.white,
             fontWeight: FontWeight.bold,
             fontSize: 13,
           ),
