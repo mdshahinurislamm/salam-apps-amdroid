@@ -114,43 +114,6 @@ class _MyAppState extends State<MyApp> {
   }
 }
 
-// class _SplashScreen extends StatelessWidget {
-//   const _SplashScreen();
-
-//   @override
-//   Widget build(BuildContext context) {
-//     return Scaffold(
-//       backgroundColor: const Color(0xFF9A9B78),
-//       body: Center(
-//         child: Column(
-//           mainAxisSize: MainAxisSize.min,
-//           children: [
-//             Container(
-//               width: 80,
-//               height: 80,
-//               decoration: BoxDecoration(
-//                 color: Colors.white,
-//                 borderRadius: BorderRadius.circular(20),
-//               ),
-//               //child: const Icon(Icons.picture_as_pdf, size: 48, color: Color(0xFF9A9B78)),
-//               child: ClipRRect(
-//               // borderRadius: BorderRadius.circular(16),
-//                 child: Image.asset(
-//                   'assets/images/logo.png', // <-- your image path
-//                   // fit: BoxFit.cover,
-//                   color: Color(0xFF9A9B78),
-//                 ),
-//               ),
-//             ),
-//             const SizedBox(height: 24),
-//             const CircularProgressIndicator(color: Colors.white),
-//           ],
-//         ),
-//       ),
-//     );
-//   }
-// }
-
 class _SplashScreen extends StatelessWidget {
   const _SplashScreen();
 
@@ -169,33 +132,17 @@ class _SplashScreen extends StatelessWidget {
                 color: Colors.white,
                 borderRadius: BorderRadius.circular(20),
               ),
+              //child: const Icon(Icons.picture_as_pdf, size: 48, color: Color(0xFF9A9B78)),
               child: ClipRRect(
+              // borderRadius: BorderRadius.circular(16),
                 child: Image.asset(
-                  'assets/images/logo.png',
-                  color: const Color(0xFF9A9B78),
+                  'assets/images/logo.png', // <-- your image path
+                  // fit: BoxFit.cover,
+                  color: Color(0xFF9A9B78),
                 ),
               ),
             ),
-            const SizedBox(height: 20),
-            const Text(
-              'Salam Institute',
-              style: TextStyle(
-                color: Colors.white,
-                fontSize: 22,
-                fontWeight: FontWeight.bold,
-                letterSpacing: 0.5,
-              ),
-            ),
-            const SizedBox(height: 6),
-            // Text(
-            //   '',
-            //   style: TextStyle(
-            //     color: Colors.white.withOpacity(0.85),
-            //     fontSize: 13,
-            //     fontWeight: FontWeight.w400,
-            //   ),
-            // ),
-            const SizedBox(height: 32),
+            const SizedBox(height: 24),
             const CircularProgressIndicator(color: Colors.white),
           ],
         ),
@@ -203,3 +150,56 @@ class _SplashScreen extends StatelessWidget {
     );
   }
 }
+
+// class _SplashScreen extends StatelessWidget {
+//   const _SplashScreen();
+
+//   @override
+//   Widget build(BuildContext context) {
+//     return Scaffold(
+//       backgroundColor: const Color(0xFF9A9B78),
+//       body: Center(
+//         child: Column(
+//           mainAxisSize: MainAxisSize.min,
+//           children: [
+//             Container(
+//               width: 80,
+//               height: 80,
+//               // decoration: BoxDecoration(
+//               //   color: Colors.white,
+//               //   borderRadius: BorderRadius.circular(20),
+//               // ),
+//               child: ClipRRect(
+//                 child: Image.asset(
+//                   'assets/images/logo.png',
+//                   color: const Color(0xFF9A9B78),
+//                 ),
+//               ),
+//             ),
+//             const SizedBox(height: 20),
+//             const Text(
+//               'Salam Institute',
+//               style: TextStyle(
+//                 color: Colors.white,
+//                 fontSize: 22,
+//                 fontWeight: FontWeight.bold,
+//                 letterSpacing: 0.5,
+//               ),
+//             ),
+//             const SizedBox(height: 6),
+//             // Text(
+//             //   '',
+//             //   style: TextStyle(
+//             //     color: Colors.white.withOpacity(0.85),
+//             //     fontSize: 13,
+//             //     fontWeight: FontWeight.w400,
+//             //   ),
+//             // ),
+//             // const SizedBox(height: 32),
+//             // const CircularProgressIndicator(color: Colors.white),
+//           ],
+//         ),
+//       ),
+//     );
+//   }
+// }
