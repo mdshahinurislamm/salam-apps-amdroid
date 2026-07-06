@@ -3,7 +3,7 @@ import 'dart:io';
 import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:flutter_pdfview/flutter_pdfview.dart';
+import 'package:syncfusion_flutter_pdfviewer/pdfviewer.dart';
 import 'package:provider/provider.dart';
 import '../models/banner_model.dart';
 import '../models/post_model.dart';
@@ -649,10 +649,93 @@ class _PdfViewerScreenState extends State<_PdfViewerScreen> {
   int _currentPage = 0;
   int _totalPages = 0;
 
+  final PdfViewerController _pdfController = PdfViewerController();
+  PdfTextSearchResult? _searchResult;
+  bool _showSearchBar = false;
+  final TextEditingController _searchTextController = TextEditingController();
+
   @override
   void initState() {
     super.initState();
     _loadPdf();
+  }
+
+  @override
+  void dispose() {
+    _searchTextController.dispose();
+    _searchResult?.clear();
+    super.dispose();
+  }
+
+  void _startSearch(String query) {
+    if (query.trim().isEmpty) return;
+    FocusScope.of(context).unfocus();
+    setState(() {
+      _searchResult = _pdfController.searchText(query.trim());
+    });
+    _searchResult!.addListener(() {
+      if (mounted) setState(() {});
+    });
+  }
+
+  void _closeSearch() {
+    setState(() {
+      _searchResult?.clear();
+      _searchResult = null;
+      _showSearchBar = false;
+      _searchTextController.clear();
+    });
+  }
+
+  Future<void> _showMoveToPageDialog(bool isAr) async {
+    final controller = TextEditingController();
+    final result = await showDialog<int>(
+      context: context,
+      builder: (dialogContext) {
+        return AlertDialog(
+          title: Text(isAr ? 'الانتقال إلى صفحة' : 'Move to Page'),
+          content: TextField(
+            controller: controller,
+            autofocus: true,
+            keyboardType: TextInputType.number,
+            decoration: InputDecoration(
+              hintText: isAr
+                  ? 'رقم الصفحة (1 - $_totalPages)'
+                  : 'Page number (1 - $_totalPages)',
+            ),
+            onSubmitted: (value) {
+              final page = int.tryParse(value);
+              Navigator.of(dialogContext).pop(page);
+            },
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop(),
+              child: Text(isAr ? 'إلغاء' : 'Cancel'),
+            ),
+            ElevatedButton(
+              onPressed: () {
+                final page = int.tryParse(controller.text);
+                Navigator.of(dialogContext).pop(page);
+              },
+              child: Text(isAr ? 'الانتقال' : 'Go'),
+            ),
+          ],
+        );
+      },
+    );
+
+    if (result != null && result >= 1 && result <= _totalPages) {
+      _pdfController.jumpToPage(result);
+    } else if (result != null) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content:
+              Text(isAr ? 'رقم صفحة غير صالح' : 'Invalid page number'),
+        ),
+      );
+    }
   }
 
   Future<void> _loadPdf() async {
@@ -707,26 +790,110 @@ class _PdfViewerScreenState extends State<_PdfViewerScreen> {
           backgroundColor: const Color(0xFF9A9B78),
           foregroundColor: Colors.white,
           elevation: 0,
-          title: Text(
-            widget.post.title,
-            style: const TextStyle(fontWeight: FontWeight.bold),
-          ),
-          actions: [
-            if (_totalPages > 0)
-              Padding(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                child: Text(
-                  isAr
-                      ? '${_currentPage + 1} / $_totalPages'
-                      : '${_currentPage + 1} / $_totalPages',
-                  style: const TextStyle(
-                      color: Colors.white, fontWeight: FontWeight.w500),
+          title: _showSearchBar
+              ? TextField(
+                  controller: _searchTextController,
+                  autofocus: true,
+                  textInputAction: TextInputAction.search,
+                  style: const TextStyle(color: Colors.white),
+                  cursorColor: Colors.white,
+                  decoration: InputDecoration(
+                    border: InputBorder.none,
+                    hintText: isAr ? 'ابحث في المستند...' : 'Search document...',
+                    hintStyle: const TextStyle(color: Colors.white70),
+                  ),
+                  onSubmitted: _startSearch,
+                )
+              : Text(
+                  widget.post.title,
+                  style: const TextStyle(fontWeight: FontWeight.bold),
                 ),
+          actions: [
+            if (_showSearchBar) ...[
+              if (_searchResult != null && _searchResult!.hasResult)
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 4),
+                  child: Center(
+                    child: Text(
+                      '${_searchResult!.currentInstanceIndex}/${_searchResult!.totalInstanceCount}',
+                      style: const TextStyle(color: Colors.white, fontSize: 13),
+                    ),
+                  ),
+                ),
+              IconButton(
+                icon: const Icon(Icons.keyboard_arrow_up),
+                tooltip: isAr ? 'السابق' : 'Previous match',
+                onPressed: () => _searchResult?.previousInstance(),
               ),
+              IconButton(
+                icon: const Icon(Icons.keyboard_arrow_down),
+                tooltip: isAr ? 'التالي' : 'Next match',
+                onPressed: () => _searchResult?.nextInstance(),
+              ),
+              IconButton(
+                icon: const Icon(Icons.close),
+                tooltip: isAr ? 'إغلاق البحث' : 'Close search',
+                onPressed: _closeSearch,
+              ),
+            ] else ...[
+              if (_totalPages > 0)
+                Padding(
+                  padding: const EdgeInsets.symmetric(
+                      horizontal: 16, vertical: 12),
+                  child: Center(
+                    child: Text(
+                      '${_currentPage} / $_totalPages',
+                      style: const TextStyle(
+                          color: Colors.white, fontWeight: FontWeight.w500),
+                    ),
+                  ),
+                ),
+            ],
           ],
         ),
         body: _buildBody(isAr, isArabicDoc),
+        bottomNavigationBar:
+            (_pdfPath != null && _error == null) ? _buildBottomBar(isAr) : null,
+      ),
+    );
+  }
+
+  Widget _buildBottomBar(bool isAr) {
+    return BottomAppBar(
+      color: const Color(0xFF9A9B78),
+      child: SizedBox(
+        height: 56,
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+          children: [
+            IconButton(
+              icon: const Icon(Icons.chevron_left, color: Colors.white),
+              tooltip: isAr ? 'الصفحة السابقة' : 'Previous page',
+              onPressed: _currentPage > 1
+                  ? () => _pdfController.previousPage()
+                  : null,
+            ),
+            IconButton(
+              icon: const Icon(Icons.search, color: Colors.white),
+              tooltip: isAr ? 'بحث' : 'Search',
+              onPressed: () {
+                setState(() => _showSearchBar = true);
+              },
+            ),
+            IconButton(
+              icon: const Icon(Icons.find_in_page_outlined, color: Colors.white),
+              tooltip: isAr ? 'الانتقال إلى صفحة' : 'Move to page',
+              onPressed: () => _showMoveToPageDialog(isAr),
+            ),
+            IconButton(
+              icon: const Icon(Icons.chevron_right, color: Colors.white),
+              tooltip: isAr ? 'الصفحة التالية' : 'Next page',
+              onPressed: _currentPage < _totalPages
+                  ? () => _pdfController.nextPage()
+                  : null,
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -777,28 +944,35 @@ class _PdfViewerScreenState extends State<_PdfViewerScreen> {
 
     if (_pdfPath == null) return const SizedBox.shrink();
 
-    return PDFView(
-      filePath: _pdfPath!,
-      enableSwipe: true,
-      swipeHorizontal: false,
-      autoSpacing: true,
-      pageFling: true,
-      fitPolicy: FitPolicy.BOTH,
-      // Arabic PDFs are typically RTL — render from last page first
-      defaultPage: isArabicDoc ? (_totalPages > 0 ? _totalPages - 1 : 0) : 0,
-      onRender: (pages) {
-        if (mounted) setState(() => _totalPages = pages ?? 0);
-      },
-      onPageChanged: (page, total) {
-        if (mounted) {
-          setState(() {
-            _currentPage = page ?? 0;
-            _totalPages = total ?? 0;
-          });
+    return SfPdfViewer.file(
+      File(_pdfPath!),
+      controller: _pdfController,
+      // Booklet-style: one page at a time, swiped horizontally like a book.
+      pageLayoutMode: PdfPageLayoutMode.single,
+      scrollDirection: PdfScrollDirection.horizontal,
+      canShowScrollHead: false,
+      canShowScrollStatus: false,
+      canShowPaginationDialog: false,
+      onDocumentLoaded: (details) {
+        if (!mounted) return;
+        setState(() {
+          _totalPages = details.document.pages.count;
+          _currentPage = 1;
+        });
+        // Arabic PDFs are typically RTL — open from the last page
+        if (isArabicDoc && _totalPages > 0) {
+          _pdfController.jumpToPage(_totalPages);
         }
       },
-      onError: (error) {
-        if (mounted) setState(() => _error = 'pdfRenderError: $error');
+      onPageChanged: (details) {
+        if (mounted) {
+          setState(() => _currentPage = details.newPageNumber);
+        }
+      },
+      onDocumentLoadFailed: (details) {
+        if (mounted) {
+          setState(() => _error = 'pdfRenderError: ${details.description}');
+        }
       },
     );
   }
