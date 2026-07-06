@@ -101,7 +101,7 @@ abstract class AppLocalizations {
   /// No description provided for @appName.
   ///
   /// In en, this message translates to:
-  /// **'My App'**
+  /// **'Salam Apps'**
   String get appName;
 
   /// No description provided for @login.
