@@ -18,8 +18,14 @@ dependencies:
   # HTTP client — pure Dart, no native registration needed
   dio: ^5.4.0
 
-  # PDF viewer — booklet-style page navigation + real text search
-  syncfusion_flutter_pdfviewer: ^32.2.9
+  # Real, drag-driven book page-flip animation (as requested)
+  page_flip: ^0.2.5+1
+
+  # Rasterizes PDF pages to images for the flip widget (pure Dart/pdfium, no license needed)
+  printing: ^5.14.3
+
+  # Core PDF library (no UI) — used only for text search across pages
+  syncfusion_flutter_pdf: ^32.2.9
 
   # intl for localization
   intl: ^0.20.0

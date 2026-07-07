@@ -3,13 +3,16 @@ import 'dart:io';
 import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:syncfusion_flutter_pdfviewer/pdfviewer.dart';
+import 'package:page_flip/page_flip.dart';
+import 'package:printing/printing.dart';
+import 'package:syncfusion_flutter_pdf/pdf.dart';
 import 'package:provider/provider.dart';
 import '../models/banner_model.dart';
 import '../models/post_model.dart';
 import '../providers/auth_provider.dart';
 import '../providers/language_provider.dart';
 import '../services/api_service.dart';
+import '../services/pdf_cache_service.dart';
 import 'login_screen.dart';
 import 'profile_screen.dart';
 
@@ -25,6 +28,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
       MethodChannel('com.example.flutter_application_1/paths');
 
   final ApiService _api = ApiService();
+  late final PdfCacheService _pdfCache =
+      PdfCacheService(getCacheDir: _getCacheDir, api: _api);
 
   // Posts state
   List<PostModel> _posts = [];
@@ -110,6 +115,11 @@ class _DashboardScreenState extends State<DashboardScreen> {
         _posts = posts;
         _postsLoading = false;
       });
+      // Warm the cache in the background for any PDF never downloaded
+      // before, so tapping into it later opens instantly instead of
+      // waiting on the network. Cheap to call repeatedly — already-cached
+      // posts are skipped.
+      _pdfCache.prefetchMissing(posts);
     } catch (e) {
       if (!mounted) return;
       setState(() {
@@ -160,6 +170,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
           post: post,
           getCacheDir: _getCacheDir,
           api: _api,
+          pdfCache: _pdfCache,
         ),
       ),
     );
@@ -631,11 +642,13 @@ class _PdfViewerScreen extends StatefulWidget {
   final PostModel post;
   final Future<String> Function() getCacheDir;
   final ApiService api;
+  final PdfCacheService pdfCache;
 
   const _PdfViewerScreen({
     required this.post,
     required this.getCacheDir,
     required this.api,
+    required this.pdfCache,
   });
 
   @override
@@ -643,16 +656,25 @@ class _PdfViewerScreen extends StatefulWidget {
 }
 
 class _PdfViewerScreenState extends State<_PdfViewerScreen> {
-  String? _pdfPath;
-  bool _loading = true;
+  Uint8List? _pdfBytes;
+  bool _loading = true; // fetching the file
+  bool _rendering = false; // still rasterizing some pages in the background
   String? _error;
-  int _currentPage = 0;
+
+  // Nullable placeholders: filled in as each page finishes rendering, so the
+  // reader can start on page 1 without waiting for the whole document.
+  List<Uint8List?> _pageImages = [];
+  int _currentPage = 1; // 1-based
   int _totalPages = 0;
 
-  final PdfViewerController _pdfController = PdfViewerController();
-  PdfTextSearchResult? _searchResult;
+  final GlobalKey<PageFlipWidgetState> _flipKey = GlobalKey();
+
+  // Search (page-level: finds which pages contain the text, then flips there)
   bool _showSearchBar = false;
+  bool _searching = false;
   final TextEditingController _searchTextController = TextEditingController();
+  List<int> _searchMatches = []; // 1-based page numbers
+  int _searchMatchIndex = -1;
 
   @override
   void initState() {
@@ -663,26 +685,245 @@ class _PdfViewerScreenState extends State<_PdfViewerScreen> {
   @override
   void dispose() {
     _searchTextController.dispose();
-    _searchResult?.clear();
     super.dispose();
   }
 
-  void _startSearch(String query) {
-    if (query.trim().isEmpty) return;
+  Future<void> _loadPdf() async {
+    setState(() {
+      _loading = true;
+      _error = null;
+    });
+    try {
+      // 1) Try the on-disk cache first. If a background prefetch (or an
+      // earlier visit) already downloaded this PDF, we skip the network
+      // entirely and open straight from disk — this is what makes the
+      // viewer feel instant.
+      final cached = await widget.pdfCache.readCachedBytes(widget.post.id);
+
+      if (cached != null && PdfCacheService.looksLikePdf(cached)) {
+        if (!mounted) return;
+        setState(() {
+          _pdfBytes = cached;
+          _loading = false;
+        });
+        unawaited(_renderPages(cached));
+
+        // 2) Quietly re-download in the background. If the server has a
+        // newer version, swap it in and re-render — without ever blocking
+        // the reader, who's already looking at the cached copy.
+        unawaited(_refreshInBackground());
+        return;
+      }
+
+      // No cache yet (first time opening this PDF) — fetch it live.
+      final Uint8List bytes =
+          await widget.api.fetchPdfBytes(widget.post.pdfUrl);
+
+      if (!PdfCacheService.looksLikePdf(bytes)) {
+        throw 'invalidPdf';
+      }
+
+      await widget.pdfCache.cacheBytes(widget.post.id, bytes);
+
+      if (!mounted) return;
+      setState(() {
+        _pdfBytes = bytes;
+        _loading = false;
+      });
+      await _renderPages(bytes);
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _error = e.toString();
+        _loading = false;
+      });
+    }
+  }
+
+  /// Re-downloads this PDF silently after it's already open and showing the
+  /// cached copy. Only swaps content in (and re-rasterizes) if the fresh
+  /// download actually differs from what was cached — otherwise it's a
+  /// no-op and the reader never notices anything happened.
+  Future<void> _refreshInBackground() async {
+    try {
+      final fresh = await widget.pdfCache.refreshInBackground(widget.post);
+      if (fresh == null || !mounted) return; // unchanged, or failed — keep current view
+
+      setState(() {
+        _pdfBytes = fresh;
+        _pageImages = [];
+        _totalPages = 0;
+        _currentPage = 1;
+      });
+      await _renderPages(fresh);
+    } catch (_) {
+      // Silent — the reader keeps looking at the still-valid cached copy.
+    }
+  }
+
+  Future<void> _renderPages(Uint8List bytes) async {
+    setState(() {
+      _rendering = true;
+    });
+    try {
+      // 1) Get the page count instantly — this only parses PDF structure,
+      // it does not rasterize anything, so it's near-instant even for big
+      // files. This lets the page counter and Move-to-page show up right
+      // away instead of waiting for every page to render.
+      final metaDoc = PdfDocument(inputBytes: bytes);
+      final totalPages = metaDoc.pages.count;
+      metaDoc.dispose();
+
+      if (!mounted) return;
+      setState(() {
+        _totalPages = totalPages;
+        _pageImages = List<Uint8List?>.filled(totalPages, null);
+        _currentPage = 1;
+      });
+
+      // 2) Disk cache: if this exact PDF was already rendered before, load
+      // the pages straight from disk instead of rasterizing again.
+      final cacheDir = await widget.getCacheDir();
+      final pagesDir =
+          Directory('$cacheDir/pdf_pages_${widget.post.id}');
+      final manifestFile = File('${pagesDir.path}/manifest.txt');
+
+      if (await manifestFile.exists()) {
+        final cachedCount =
+            int.tryParse((await manifestFile.readAsString()).trim()) ?? -1;
+        if (cachedCount == totalPages) {
+          var cacheIntact = true;
+          for (var i = 0; i < totalPages; i++) {
+            final file = File('${pagesDir.path}/page_$i.png');
+            if (!await file.exists()) {
+              cacheIntact = false;
+              break;
+            }
+            final png = await file.readAsBytes();
+            if (!mounted) return;
+            setState(() => _pageImages[i] = png);
+          }
+          if (cacheIntact) {
+            if (!mounted) return;
+            setState(() => _rendering = false);
+            return;
+          }
+          // Cache was incomplete/corrupted — clear partial results and
+          // fall through to a fresh render below.
+          if (!mounted) return;
+          setState(() {
+            _pageImages = List<Uint8List?>.filled(totalPages, null);
+          });
+        }
+      }
+
+      // 3) No usable cache — rasterize page by page, showing each as soon
+      // as it's ready, and writing it to disk for next time.
+      await pagesDir.create(recursive: true);
+      var index = 0;
+      await for (final page in Printing.raster(bytes, dpi: 100)) {
+        final png = await page.toPng();
+        if (!mounted) return;
+        setState(() => _pageImages[index] = png);
+        // Fire-and-forget disk write so it doesn't block rendering the next page.
+        unawaited(
+            File('${pagesDir.path}/page_$index.png').writeAsBytes(png));
+        index++;
+      }
+      await manifestFile.writeAsString(index.toString(), flush: true);
+
+      if (!mounted) return;
+      setState(() => _rendering = false);
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _error = 'pdfRenderError: $e';
+        _rendering = false;
+      });
+    }
+  }
+
+  void _goToPage(int oneBasedPage) {
+    final target = oneBasedPage.clamp(1, _totalPages);
+    _flipKey.currentState?.goToPage(target - 1);
+    setState(() => _currentPage = target);
+  }
+
+  void _flipNext() {
+    if (_currentPage >= _totalPages) return;
+    _goToPage(_currentPage + 1);
+  }
+
+  void _flipPrevious() {
+    if (_currentPage <= 1) return;
+    _goToPage(_currentPage - 1);
+  }
+
+  Future<void> _startSearch(String query) async {
+    final trimmed = query.trim();
+    if (trimmed.isEmpty || _pdfBytes == null) return;
     FocusScope.of(context).unfocus();
     setState(() {
-      _searchResult = _pdfController.searchText(query.trim());
+      _searching = true;
+      _searchMatches = [];
+      _searchMatchIndex = -1;
     });
-    _searchResult!.addListener(() {
-      if (mounted) setState(() {});
+
+    try {
+      final matches = <int>[];
+      final document = PdfDocument(inputBytes: _pdfBytes!);
+      final extractor = PdfTextExtractor(document);
+      final needle = trimmed.toLowerCase();
+      for (var i = 0; i < document.pages.count; i++) {
+        final text = extractor.extractText(startPageIndex: i, endPageIndex: i);
+        if (text.toLowerCase().contains(needle)) {
+          matches.add(i + 1);
+        }
+      }
+      document.dispose();
+
+      if (!mounted) return;
+      setState(() {
+        _searchMatches = matches;
+        _searchMatchIndex = matches.isEmpty ? -1 : 0;
+        _searching = false;
+      });
+
+      if (matches.isNotEmpty) {
+        _goToPage(matches.first);
+      }
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _searching = false;
+        _searchMatches = [];
+        _searchMatchIndex = -1;
+      });
+    }
+  }
+
+  void _goToNextMatch() {
+    if (_searchMatches.isEmpty) return;
+    setState(() {
+      _searchMatchIndex = (_searchMatchIndex + 1) % _searchMatches.length;
     });
+    _goToPage(_searchMatches[_searchMatchIndex]);
+  }
+
+  void _goToPreviousMatch() {
+    if (_searchMatches.isEmpty) return;
+    setState(() {
+      _searchMatchIndex =
+          (_searchMatchIndex - 1 + _searchMatches.length) % _searchMatches.length;
+    });
+    _goToPage(_searchMatches[_searchMatchIndex]);
   }
 
   void _closeSearch() {
     setState(() {
-      _searchResult?.clear();
-      _searchResult = null;
       _showSearchBar = false;
+      _searchMatches = [];
+      _searchMatchIndex = -1;
       _searchTextController.clear();
     });
   }
@@ -726,66 +967,30 @@ class _PdfViewerScreenState extends State<_PdfViewerScreen> {
     );
 
     if (result != null && result >= 1 && result <= _totalPages) {
-      _pdfController.jumpToPage(result);
+      _goToPage(result);
     } else if (result != null) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content:
-              Text(isAr ? 'رقم صفحة غير صالح' : 'Invalid page number'),
+          content: Text(isAr ? 'رقم صفحة غير صالح' : 'Invalid page number'),
         ),
       );
     }
   }
 
-  Future<void> _loadPdf() async {
-    setState(() {
-      _loading = true;
-      _error = null;
-    });
-    try {
-      final Uint8List bytes =
-          await widget.api.fetchPdfBytes(widget.post.pdfUrl);
-
-      // Validate PDF magic bytes
-      if (bytes.length < 4 ||
-          bytes[0] != 0x25 ||
-          bytes[1] != 0x50 ||
-          bytes[2] != 0x44 ||
-          bytes[3] != 0x46) {
-        throw 'invalidPdf';
-      }
-
-      final cacheDir = await widget.getCacheDir();
-      final file =
-          File('$cacheDir/post_${widget.post.id}.pdf');
-      await file.writeAsBytes(bytes, flush: true);
-
-      if (!mounted) return;
-      setState(() {
-        _pdfPath = file.path;
-        _loading = false;
-      });
-    } catch (e) {
-      if (!mounted) return;
-      setState(() {
-        _error = e.toString();
-        _loading = false;
-      });
-    }
-  }
-
   @override
   Widget build(BuildContext context) {
-    final isAr =
-        context.watch<LanguageProvider>().isArabic;
-    final isArabicDoc =
-        widget.post.languages.toLowerCase() == 'arabic';
+    final isAr = context.watch<LanguageProvider>().isArabic;
+    final isArabicDoc = widget.post.languages.toLowerCase() == 'arabic';
+    final ready = !_loading &&
+        _error == null &&
+        _pageImages.isNotEmpty &&
+        _pageImages[0] != null;
 
     return Directionality(
       textDirection: isAr ? TextDirection.rtl : TextDirection.ltr,
       child: Scaffold(
-        backgroundColor: Colors.grey.shade100,
+        backgroundColor: Colors.grey.shade800,
         appBar: AppBar(
           backgroundColor: const Color(0xFF9A9B78),
           foregroundColor: Colors.white,
@@ -795,12 +1000,12 @@ class _PdfViewerScreenState extends State<_PdfViewerScreen> {
                   controller: _searchTextController,
                   autofocus: true,
                   textInputAction: TextInputAction.search,
-                  style: const TextStyle(color: Colors.white),
+                  style: const TextStyle(color: Colors.black),
                   cursorColor: Colors.white,
                   decoration: InputDecoration(
                     border: InputBorder.none,
                     hintText: isAr ? 'ابحث في المستند...' : 'Search document...',
-                    hintStyle: const TextStyle(color: Colors.white70),
+                    hintStyle: const TextStyle(color: Colors.black),
                   ),
                   onSubmitted: _startSearch,
                 )
@@ -810,25 +1015,49 @@ class _PdfViewerScreenState extends State<_PdfViewerScreen> {
                 ),
           actions: [
             if (_showSearchBar) ...[
-              if (_searchResult != null && _searchResult!.hasResult)
+              if (_searching)
+                const Padding(
+                  padding: EdgeInsets.symmetric(horizontal: 12),
+                  child: Center(
+                    child: SizedBox(
+                      width: 18,
+                      height: 18,
+                      child: CircularProgressIndicator(
+                          strokeWidth: 2, color: Colors.white),
+                    ),
+                  ),
+                )
+              else if (_searchMatches.isNotEmpty)
                 Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 4),
                   child: Center(
                     child: Text(
-                      '${_searchResult!.currentInstanceIndex}/${_searchResult!.totalInstanceCount}',
+                      isAr
+                          ? '${_searchMatchIndex + 1}/${_searchMatches.length} (صفحة ${_searchMatches[_searchMatchIndex]})'
+                          : '${_searchMatchIndex + 1}/${_searchMatches.length} (pg ${_searchMatches[_searchMatchIndex]})',
                       style: const TextStyle(color: Colors.white, fontSize: 13),
+                    ),
+                  ),
+                )
+              else if (_searchTextController.text.isNotEmpty)
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 8),
+                  child: Center(
+                    child: Text(
+                      isAr ? 'لا نتائج' : 'No matches',
+                      style: const TextStyle(color: Colors.white70, fontSize: 13),
                     ),
                   ),
                 ),
               IconButton(
                 icon: const Icon(Icons.keyboard_arrow_up),
                 tooltip: isAr ? 'السابق' : 'Previous match',
-                onPressed: () => _searchResult?.previousInstance(),
+                onPressed: _searchMatches.isEmpty ? null : _goToPreviousMatch,
               ),
               IconButton(
                 icon: const Icon(Icons.keyboard_arrow_down),
                 tooltip: isAr ? 'التالي' : 'Next match',
-                onPressed: () => _searchResult?.nextInstance(),
+                onPressed: _searchMatches.isEmpty ? null : _goToNextMatch,
               ),
               IconButton(
                 icon: const Icon(Icons.close),
@@ -836,13 +1065,24 @@ class _PdfViewerScreenState extends State<_PdfViewerScreen> {
                 onPressed: _closeSearch,
               ),
             ] else ...[
+              if (_rendering)
+                const Padding(
+                  padding: EdgeInsets.only(right: 4),
+                  child: Center(
+                    child: SizedBox(
+                      width: 14,
+                      height: 14,
+                      child: CircularProgressIndicator(
+                          strokeWidth: 2, color: Colors.white70),
+                    ),
+                  ),
+                ),
               if (_totalPages > 0)
                 Padding(
-                  padding: const EdgeInsets.symmetric(
-                      horizontal: 16, vertical: 12),
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
                   child: Center(
                     child: Text(
-                      '${_currentPage} / $_totalPages',
+                      '$_currentPage / $_totalPages',
                       style: const TextStyle(
                           color: Colors.white, fontWeight: FontWeight.w500),
                     ),
@@ -852,8 +1092,7 @@ class _PdfViewerScreenState extends State<_PdfViewerScreen> {
           ],
         ),
         body: _buildBody(isAr, isArabicDoc),
-        bottomNavigationBar:
-            (_pdfPath != null && _error == null) ? _buildBottomBar(isAr) : null,
+        bottomNavigationBar: ready ? _buildBottomBar(isAr) : null,
       ),
     );
   }
@@ -869,9 +1108,7 @@ class _PdfViewerScreenState extends State<_PdfViewerScreen> {
             IconButton(
               icon: const Icon(Icons.chevron_left, color: Colors.white),
               tooltip: isAr ? 'الصفحة السابقة' : 'Previous page',
-              onPressed: _currentPage > 1
-                  ? () => _pdfController.previousPage()
-                  : null,
+              onPressed: _currentPage > 1 ? _flipPrevious : null,
             ),
             IconButton(
               icon: const Icon(Icons.search, color: Colors.white),
@@ -888,11 +1125,35 @@ class _PdfViewerScreenState extends State<_PdfViewerScreen> {
             IconButton(
               icon: const Icon(Icons.chevron_right, color: Colors.white),
               tooltip: isAr ? 'الصفحة التالية' : 'Next page',
-              onPressed: _currentPage < _totalPages
-                  ? () => _pdfController.nextPage()
-                  : null,
+              onPressed: _currentPage < _totalPages ? _flipNext : null,
             ),
           ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildPageWidget(Uint8List? imageBytes) {
+    if (imageBytes == null) {
+      return Container(
+        color: Colors.white,
+        child: const Center(
+          child: SizedBox(
+            width: 28,
+            height: 28,
+            child: CircularProgressIndicator(
+                strokeWidth: 2.5, color: Color(0xFF9A9B78)),
+          ),
+        ),
+      );
+    }
+    return Container(
+      color: Colors.white,
+      child: InteractiveViewer(
+        minScale: 1,
+        maxScale: 4,
+        child: Center(
+          child: Image.memory(imageBytes, fit: BoxFit.contain),
         ),
       ),
     );
@@ -908,7 +1169,7 @@ class _PdfViewerScreenState extends State<_PdfViewerScreen> {
             const SizedBox(height: 16),
             Text(
               isAr ? 'جارٍ تحميل الملف...' : 'Loading PDF...',
-              style: TextStyle(color: Colors.grey.shade600),
+              style: const TextStyle(color: Colors.white70),
             ),
           ],
         ),
@@ -923,12 +1184,14 @@ class _PdfViewerScreenState extends State<_PdfViewerScreen> {
             mainAxisSize: MainAxisSize.min,
             children: [
               Icon(Icons.error_outline_rounded,
-                  size: 64, color: Colors.red.shade400),
+                  size: 64, color: Colors.red.shade200),
               const SizedBox(height: 16),
               Text(
                 isAr ? 'فشل تحميل الملف' : 'Failed to Load PDF',
                 style: const TextStyle(
-                    fontSize: 18, fontWeight: FontWeight.bold),
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.white),
               ),
               const SizedBox(height: 24),
               ElevatedButton.icon(
@@ -942,38 +1205,44 @@ class _PdfViewerScreenState extends State<_PdfViewerScreen> {
       );
     }
 
-    if (_pdfPath == null) return const SizedBox.shrink();
+    // Only block on a full-screen spinner until page 1 specifically is
+    // ready — the rest can keep rendering in the background while the
+    // reader is already looking at page 1.
+    final firstPageReady =
+        _pageImages.isNotEmpty && _pageImages[0] != null;
 
-    return SfPdfViewer.file(
-      File(_pdfPath!),
-      controller: _pdfController,
-      // Booklet-style: one page at a time, swiped horizontally like a book.
-      pageLayoutMode: PdfPageLayoutMode.single,
-      scrollDirection: PdfScrollDirection.horizontal,
-      canShowScrollHead: false,
-      canShowScrollStatus: false,
-      canShowPaginationDialog: false,
-      onDocumentLoaded: (details) {
-        if (!mounted) return;
-        setState(() {
-          _totalPages = details.document.pages.count;
-          _currentPage = 1;
-        });
-        // Arabic PDFs are typically RTL — open from the last page
-        if (isArabicDoc && _totalPages > 0) {
-          _pdfController.jumpToPage(_totalPages);
-        }
-      },
-      onPageChanged: (details) {
-        if (mounted) {
-          setState(() => _currentPage = details.newPageNumber);
-        }
-      },
-      onDocumentLoadFailed: (details) {
-        if (mounted) {
-          setState(() => _error = 'pdfRenderError: ${details.description}');
-        }
-      },
+    if (!firstPageReady) {
+      return Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const CircularProgressIndicator(color: Color(0xFF9A9B78)),
+            const SizedBox(height: 16),
+            Text(
+              isAr ? 'جارٍ تجهيز الصفحات...' : 'Preparing pages...',
+              style: const TextStyle(color: Colors.white70),
+            ),
+          ],
+        ),
+      );
+    }
+
+    return PageFlipWidget(
+      key: _flipKey,
+      backgroundColor: Colors.grey.shade800,
+      isRightSwipe: isArabicDoc,
+      lastPage: Container(
+        color: Colors.white,
+        child: Center(
+          child: Text(
+            isAr ? 'نهاية المستند' : 'End of document',
+            style: TextStyle(color: Colors.grey.shade600, fontSize: 16),
+          ),
+        ),
+      ),
+      children: [
+        for (final imageBytes in _pageImages) _buildPageWidget(imageBytes),
+      ],
     );
   }
 }
